@@ -32,8 +32,17 @@ pip install -r requirements.txt
 
 ### 4. Create `.env` file
 ```
+# Database Connection
 DATABASE_URL=postgresql://postgres:your_password@localhost:5432/pharma_db
-SECRET_KEY=your-secret-key-here
+
+# Security
+SECRET_KEY=your-secret-key-change-this-min-32-characters-long
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# App
+APP_NAME=Pharmacy Audit Platform
+VERSION=1.0.0
 ```
 
 ### 5. Create database
