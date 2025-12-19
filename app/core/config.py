@@ -1,17 +1,25 @@
 from pydantic_settings import BaseSettings
+
 class Settings(BaseSettings):
-    # Database
-    DATABASE_URL: str = "postgresql://postgres:password@localhost/pharma_db"
+    """
+    Application settings loaded from environment variables
+    """
+    # Database (REQUIRED - no default)
+    DATABASE_URL: str
     
-    # Security
-    SECRET_KEY: str = "your-secret-key-change-in-production-make-it-long-and-random"
+    # Security (REQUIRED - no default)
+    SECRET_KEY: str
+    
+    # Security (optional defaults)
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
-    # App
+    # App Info (optional defaults)
     APP_NAME: str = "Pharmacy Audit Platform"
     VERSION: str = "1.0.0"
     
     class Config:
         env_file = ".env"
+        case_sensitive = True
+
 settings = Settings()
