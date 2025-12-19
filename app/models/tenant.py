@@ -6,10 +6,6 @@ from datetime import datetime
 from app.core.database import Base
 
 class Tenant(Base):
-    """
-    Tenant (Pharmacy) model
-    Each tenant represents one pharmacy using the system
-    """
     __tablename__ = "tenants"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -18,7 +14,6 @@ class Tenant(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, onupdate=datetime.utcnow)
     
-    # Relationships
     users = relationship("User", back_populates="tenant")
     claims = relationship("Claim", back_populates="tenant")
     ingestion_jobs = relationship("IngestionJob", back_populates="tenant")
