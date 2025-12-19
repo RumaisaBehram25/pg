@@ -17,7 +17,7 @@ class TenantRegister(BaseModel):
     pharmacy_name: str = Field(..., min_length=2, max_length=255, description="Pharmacy name")
     admin_email: EmailStr = Field(..., description="Admin email address")
     admin_name: str = Field(..., min_length=2, max_length=255, description="Admin full name")
-    password: str = Field(..., min_length=8, description="Password (min 8 characters)")
+    password: str = Field(..., min_length=8, max_length=64, description="Password (8-64 characters)")
     
     class Config:
         json_schema_extra = {
@@ -64,7 +64,7 @@ class UserLogin(BaseModel):
     NO tenant_id accepted from client!
     """
     email: EmailStr = Field(..., description="User email")
-    password: str = Field(..., min_length=1, description="User password")
+    password: str = Field(..., min_length=1, max_length=64, description="User password")
     
     class Config:
         json_schema_extra = {
