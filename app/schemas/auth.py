@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field
 
+
 class TenantRegister(BaseModel):
     pharmacy_name: str = Field(..., min_length=2, max_length=255)
     admin_email: EmailStr
@@ -9,10 +10,10 @@ class TenantRegister(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "pharmacy_name": "CVS Pharmacy - Downtown Chicago",
-                "admin_email": "admin@cvs-chicago.com",
-                "admin_name": "John Smith",
-                "password": "SecurePass123!"
+                "pharmacy_name": "New Pharmacy Name",
+                "admin_email": "admin@newpharmacy.com",
+                "admin_name": "Admin Name",
+                "password": "admin123"
             }
         }
 
@@ -34,7 +35,7 @@ class UserLogin(BaseModel):
         json_schema_extra = {
             "example": {
                 "email": "admin@cvs-chicago.com",
-                "password": "SecurePass123!"
+                "password": "admin123"
             }
         }
 
@@ -50,3 +51,37 @@ class LoginResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    full_name: str = Field(..., min_length=2, max_length=255)
+    password: str = Field(..., min_length=8, max_length=64)
+    role: str = Field(default="USER", pattern="^(ADMIN|USER)$")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "email": "newuser@pharmacy.com",
+                "full_name": "New Staff Member",
+                "password": "password123",
+                "role": "USER"
+            }
+        }
+
+
+class UserResponse(BaseModel):
+    id: str
+    email: str
+    full_name: str
+    role: str
+    tenant_id: str
+    is_active: bool
+    
+    class Config:
+        from_attributes = True
+
+
+class UserListResponse(BaseModel):
+    users: list[UserResponse]
+    total: int

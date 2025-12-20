@@ -1,15 +1,24 @@
 from datetime import datetime, timedelta
-from jose import jwt
+from jose import jwt, JWTError
 from passlib.context import CryptContext
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
+
 from app.core.config import settings
+from app.core.database import get_db
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+security = HTTPBearer()
+
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
+
 
 def create_jwt(data: dict) -> str:
     to_encode = data.copy()
@@ -18,6 +27,57 @@ def create_jwt(data: dict) -> str:
     token = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
     return token
 
+
 def decode_jwt(token: str) -> dict:
     payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
     return payload
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """Extract and validate current user from JWT token."""
+    from app.models.user import User, UserRole
+    
+    token = credentials.credentials
+    
+    try:
+        payload = decode_jwt(token)
+        user_id = payload.get("user_id")
+        tenant_id = payload.get("tenant_id")
+        email = payload.get("email")
+        role = payload.get("role")
+        
+        if not all([user_id, tenant_id, email, role]):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token payload"
+            )
+        
+        class CurrentUser:
+            def __init__(self, user_id, tenant_id, email, role):
+                self.id = user_id
+                self.tenant_id = tenant_id
+                self.email = email
+                self.role = UserRole(role)
+        
+        return CurrentUser(user_id, tenant_id, email, role)
+        
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
+
+
+def get_current_admin(current_user = Depends(get_current_user)):
+    """Ensure current user is an ADMIN."""
+    from app.models.user import UserRole
+    
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    return current_user

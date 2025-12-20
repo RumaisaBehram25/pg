@@ -18,6 +18,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
 def register_tenant(data: TenantRegister, request: Request, db: Session = Depends(get_db)):
+    """Register a new pharmacy and create admin user."""
     try:
         tenant = Tenant(name=data.pharmacy_name, is_active=True)
         db.add(tenant)
@@ -62,12 +63,10 @@ def register_tenant(data: TenantRegister, request: Request, db: Session = Depend
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Registration failed: tenant/user already exists or violates constraints",
+            detail="Registration failed: tenant/user already exists",
         )
     except Exception as e:
         db.rollback()
-        print(f"Registration error: {str(e)}")
-        print(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Registration failed: {str(e)}",
@@ -76,6 +75,7 @@ def register_tenant(data: TenantRegister, request: Request, db: Session = Depend
 
 @router.post("/login", response_model=LoginResponse)
 def login(credentials: UserLogin, request: Request, db: Session = Depends(get_db)):
+    """Login and get JWT token."""
     user = db.query(User).filter(User.email == credentials.email).first()
 
     if not user or not verify_password(credentials.password, user.hashed_password):
@@ -103,8 +103,3 @@ def login(credentials: UserLogin, request: Request, db: Session = Depends(get_db
         email=user.email,
         role=user.role.value,
     )
-
-
-@router.get("/me")
-def get_current_user_info():
-    return {"message": "This endpoint will return current user info"}
