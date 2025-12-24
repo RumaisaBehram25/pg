@@ -1,6 +1,4 @@
-"""
-Claims upload and ingestion API endpoints
-"""
+
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List
@@ -32,39 +30,33 @@ async def upload_csv(
     Creates ingestion job record
     Returns job_id for status tracking
     """
-    # Validate file type
+    
     if not file.filename.endswith('.csv'):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File must be a CSV file"
         )
     
-    # Read file content
     content = await file.read()
     
-    # Validate file size (10MB max)
-    max_size = 10 * 1024 * 1024  # 10MB
+    max_size = 10 * 1024 * 1024  
     if len(content) > max_size:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"File too large. Maximum size is {max_size / (1024*1024)}MB"
         )
     
-    # Validate file not empty
     if len(content) == 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File is empty"
         )
     
-    # Calculate file hash for deduplication
     file_hash = hashlib.sha256(content).hexdigest()
     
-    # Save file temporarily
     upload_dir = Path("tmp/uploads")
     upload_dir.mkdir(parents=True, exist_ok=True)
     
-    # Generate unique filename
     import uuid
     unique_filename = f"{uuid.uuid4()}_{file.filename}"
     file_path = upload_dir / unique_filename
@@ -72,7 +64,7 @@ async def upload_csv(
     with open(file_path, "wb") as f:
         f.write(content)
     
-    # Create job record
+    
     job = job_service.create_job(
         db=db,
         tenant_id=str(current_user.tenant_id),
@@ -80,7 +72,7 @@ async def upload_csv(
         file_hash=file_hash
     )
     
-    # Queue background task
+   
     task = process_csv_task.delay(
         str(job.id),
         str(file_path),
@@ -109,7 +101,7 @@ async def get_job_status(
     - row counts (total, success, errors)
     - timestamps
     """
-    # Get job using service (RLS handled inside)
+    
     job = job_service.get_job(
         db=db,
         job_id=job_id,
@@ -139,10 +131,7 @@ async def list_jobs(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """
-    List recent ingestion jobs for current tenant
-    """
-    # Get jobs using service (RLS handled inside)
+   
     jobs = job_service.list_jobs(
         db=db,
         tenant_id=str(current_user.tenant_id),
@@ -172,17 +161,13 @@ async def get_job_errors(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """
-    Get error details for a specific job
-    """
-    # Set RLS context
+   
     from sqlalchemy import text
     db.execute(
         text("SET app.current_tenant_id = :tenant_id"),
         {"tenant_id": str(current_user.tenant_id)}
     )
     
-    # Get job
     job = db.query(models.IngestionJob).filter(
         models.IngestionJob.id == job_id
     ).first()
@@ -193,7 +178,6 @@ async def get_job_errors(
             detail="Job not found"
         )
     
-    # Get errors for this job
     errors = db.query(models.IngestionError).filter(
         models.IngestionError.ingestion_id == job_id
     ).order_by(models.IngestionError.row_number).all()

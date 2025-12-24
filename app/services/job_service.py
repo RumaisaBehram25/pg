@@ -1,6 +1,4 @@
-"""
-Job Service - Handles ingestion job CRUD operations
-"""
+
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.models.claim import IngestionJob
@@ -10,8 +8,7 @@ from typing import Optional
 
 
 def create_job(db: Session, tenant_id: str, filename: str, file_hash: str = None) -> IngestionJob:
-    """Create a new ingestion job"""
-    # Set RLS context (FIXED - no SQL injection)
+   
     db.execute(
         text("SET app.current_tenant_id = :tenant_id"),
         {"tenant_id": tenant_id}
@@ -42,7 +39,6 @@ def create_job(db: Session, tenant_id: str, filename: str, file_hash: str = None
 
 
 def get_job(db: Session, job_id: str, tenant_id: str) -> Optional[IngestionJob]:
-    """Get a job by ID (RLS filters by tenant)"""
     db.execute(
         text("SET app.current_tenant_id = :tenant_id"),
         {"tenant_id": tenant_id}
@@ -60,7 +56,6 @@ def update_job_status(
     success_count: int = None,
     error_count: int = None
 ) -> IngestionJob:
-    """Update job status and counts"""
     db.execute(
         text("SET app.current_tenant_id = :tenant_id"),
         {"tenant_id": tenant_id}
@@ -71,7 +66,7 @@ def update_job_status(
     if not job:
         raise ValueError(f"Job {job_id} not found")
     
-    # Update fields
+ 
     job.status = status
     
     if total_rows is not None:
@@ -81,7 +76,6 @@ def update_job_status(
     if error_count is not None:
         job.failed_rows = error_count
     
-    # Update timestamps
     if status == "processing" and not job.started_at:
         job.started_at = datetime.utcnow()
     
@@ -95,7 +89,7 @@ def update_job_status(
 
 
 def list_jobs(db: Session, tenant_id: str, limit: int = 20) -> list[IngestionJob]:
-    """List recent jobs for tenant"""
+   
     db.execute(
         text("SET app.current_tenant_id = :tenant_id"),
         {"tenant_id": tenant_id}

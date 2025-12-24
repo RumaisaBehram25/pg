@@ -18,7 +18,6 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
 def register_tenant(data: TenantRegister, request: Request, db: Session = Depends(get_db)):
-    """Register a new pharmacy and create admin user."""
     try:
         tenant = Tenant(name=data.pharmacy_name, is_active=True)
         db.add(tenant)

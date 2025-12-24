@@ -1,4 +1,4 @@
-"""User Management API"""
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -9,7 +9,7 @@ from app.core.security import hash_password, get_current_user, get_current_admin
 from app.schemas.auth import UserCreate, UserResponse, UserListResponse
 from app.models.user import User, UserRole
 
-router = APIRouter()  # ← FIXED: No prefix, no tags
+router = APIRouter()  
 
 
 @router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -18,7 +18,7 @@ def create_user(
     current_user = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
-    """Create a new user within the admin's tenant."""
+    
     try:
         db.execute(
             text("SET app.current_tenant_id = :tenant_id"),
@@ -75,7 +75,7 @@ def list_users(
     current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """List all users in the current tenant."""
+   
     db.execute(
         text("SET app.current_tenant_id = :tenant_id"),
         {"tenant_id": str(current_user.tenant_id)}
@@ -104,7 +104,7 @@ def get_current_user_info(
     current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get current authenticated user's information."""
+    
     db.execute(
         text("SET app.current_tenant_id = :tenant_id"),
         {"tenant_id": str(current_user.tenant_id)}

@@ -1,6 +1,4 @@
-"""
-Celery background tasks for CSV processing
-"""
+
 from celery import Task
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
@@ -12,7 +10,7 @@ from app.core.celery_config import celery_app
 from app.core.config import settings
 from app.models.claim import Claim, IngestionJob, IngestionError
 
-# Create database session for worker
+
 engine = create_engine(settings.DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
@@ -35,14 +33,7 @@ class DatabaseTask(Task):
 
 @celery_app.task(base=DatabaseTask, bind=True, name='process_csv_task')
 def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
-    """
-    Process uploaded CSV file
-    
-    Args:
-        job_id: UUID of ingestion job
-        file_path: Path to uploaded CSV file
-        tenant_id: UUID of tenant
-    """
+
     db = self.db
     
     print(f"\n{'='*80}")
@@ -53,20 +44,20 @@ def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
     print(f"{'='*80}\n")
     
     try:
-        # CRITICAL: Set RLS context FIRST
+       
         print(f"Setting RLS context for tenant: {tenant_id}")
         db.execute(
             text("SET app.current_tenant_id = :tenant_id"),
             {"tenant_id": tenant_id}
         )
         
-        # Verify context is set
+        
         current_tenant = db.execute(
             text("SELECT current_setting('app.current_tenant_id', true)")
         ).scalar()
         print(f"✅ RLS context verified: {current_tenant}\n")
         
-        # Get job
+        
         job = db.query(IngestionJob).filter(IngestionJob.id == job_id).first()
         
         if not job:
@@ -75,13 +66,13 @@ def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
         
         print(f"Found job: {job.filename}")
         
-        # Update job to processing
+        
         job.status = "processing"
         job.started_at = datetime.utcnow()
         db.commit()
         print(f"Job status updated to: processing\n")
         
-        # Read CSV file
+       
         file_path = Path(file_path)
         
         if not file_path.exists():
@@ -89,19 +80,17 @@ def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
         
         print(f"Reading file: {file_path.name}")
         
-        # ============================================================
-        # USE HAFSA'S CSV PARSER (Multi-encoding support + cleaning)
-        # ============================================================
+
         from app.services.csv_parser import read_csv_file
         
         try:
-            # Parse CSV with auto-encoding detection
+            
             rows = read_csv_file(str(file_path))
             
             if not rows:
                 raise ValueError("CSV file is empty")
             
-            # Validate headers (check first row keys)
+            
             required_headers = {'claim_number', 'patient_id', 'drug_code', 'amount'}
             headers = set(rows[0].keys()) if rows else set()
             
@@ -115,32 +104,28 @@ def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
         except ValueError as e:
             raise ValueError(f"CSV parsing failed: {str(e)}")
         
-        # ============================================================
-        # PROCESS ROWS WITH VALIDATION
-        # ============================================================
+
         total_rows = 0
         success_count = 0
         error_count = 0
         
-        # Track claim_numbers to detect duplicates within file
+        
         existing_claim_numbers = set()
         
         print("Processing rows...")
         
-        # Process each row
-        for row_number, row in enumerate(rows, start=2):  # start=2 (row 1 is header)
+        
+        for row_number, row in enumerate(rows, start=2):  
             total_rows += 1
             
             try:
-                # ====== VALIDATION RULES ======
-                
-                # Get and validate required fields
+               
                 claim_number = row.get('claim_number', '').strip()
                 patient_id = row.get('patient_id', '').strip()
                 drug_code = row.get('drug_code', '').strip()
                 amount_str = row.get('amount', '').strip()
                 
-                # E001: Check required fields not empty
+                
                 if not claim_number:
                     raise ValueError("[E001] claim_number cannot be empty")
                 if not patient_id:
@@ -150,25 +135,25 @@ def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
                 if not amount_str:
                     raise ValueError("[E001] amount cannot be empty")
                 
-                # E006: Check for duplicate claim_number within file
+                
                 if claim_number in existing_claim_numbers:
                     raise ValueError(f"[E006] Duplicate claim_number: {claim_number}")
                 
-                # E003: Validate amount format
+                
                 try:
                     amount = float(amount_str)
                 except (ValueError, TypeError):
                     raise ValueError(f"[E003] Invalid amount format: '{amount_str}'")
                 
-                # E004: Amount must be positive
+                
                 if amount <= 0:
                     raise ValueError(f"[E004] Amount must be positive: {amount}")
                 
-                # E005: Amount validation (suspicious if too high)
+                
                 if amount > 10000:
                     raise ValueError(f"[E005] Amount suspiciously high: ${amount} (max: $10,000)")
                 
-                # E007: Validate quantity (if provided)
+                
                 quantity = None
                 if row.get('quantity', '').strip():
                     try:
@@ -178,7 +163,7 @@ def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
                     except ValueError:
                         raise ValueError(f"[E007] Invalid quantity format: '{row.get('quantity')}'")
                 
-                # E008: Validate days_supply (if provided)
+                
                 days_supply = None
                 if row.get('days_supply', '').strip():
                     try:
@@ -190,7 +175,7 @@ def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
                     except ValueError:
                         raise ValueError(f"[E008] Invalid days_supply format: '{row.get('days_supply')}'")
                 
-                # E009: Validate prescription_date (if provided)
+               
                 prescription_date = None
                 if row.get('prescription_date', '').strip():
                     try:
@@ -198,10 +183,10 @@ def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
                     except ValueError:
                         raise ValueError(f"[E009] Invalid date format: '{row['prescription_date']}' (use YYYY-MM-DD)")
                 
-                # Add to seen claim numbers (prevent duplicates in same file)
+                
                 existing_claim_numbers.add(claim_number)
                 
-                # ====== CREATE CLAIM ======
+               
                 claim = Claim(
                     tenant_id=uuid.UUID(tenant_id),
                     ingestion_id=uuid.UUID(job_id),
@@ -218,7 +203,7 @@ def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
                 db.add(claim)
                 success_count += 1
                 
-                # Commit in batches of 50 for better visibility
+                
                 if total_rows % 50 == 0:
                     db.commit()
                     print(f"  ✅ Committed batch: {total_rows} rows processed ({success_count} successful, {error_count} errors)")
@@ -226,24 +211,24 @@ def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
             except Exception as e:
                 error_count += 1
                 
-                # Log error to ingestion_errors table
+                
                 error = IngestionError(
                     tenant_id=uuid.UUID(tenant_id),
                     ingestion_id=uuid.UUID(job_id),
                     row_number=row_number,
                     error_message=str(e),
-                    raw_row_data=str(row)[:500]  # Limit size to 500 chars
+                    raw_row_data=str(row)[:500]  
                 )
                 db.add(error)
                 
                 print(f"  ❌ Error on row {row_number}: {e}")
         
-        # CRITICAL: Final commit for remaining rows
+        
         print(f"\n🔄 Final commit...")
         db.commit()
         print(f"✅ All data committed to database!\n")
         
-        # Update job status
+        
         job.status = "completed"
         job.total_rows = total_rows
         job.successful_rows = success_count
@@ -258,7 +243,7 @@ def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
         print(f"Errors: {error_count}")
         print(f"{'='*80}\n")
         
-        # Clean up file
+        
         try:
             file_path.unlink()
             print(f"🗑️  Deleted temporary file: {file_path}")
@@ -273,7 +258,7 @@ def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
         }
     
     except Exception as e:
-        # Mark job as failed
+        
         print(f"\n{'='*80}")
         print(f"❌ JOB FAILED: {str(e)}")
         print(f"{'='*80}\n")
