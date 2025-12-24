@@ -9,7 +9,7 @@ from app.core.security import hash_password, get_current_user, get_current_admin
 from app.schemas.auth import UserCreate, UserResponse, UserListResponse
 from app.models.user import User, UserRole
 
-router = APIRouter(prefix="/users", tags=["User Management"])
+router = APIRouter()  # ← FIXED: No prefix, no tags
 
 
 @router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
