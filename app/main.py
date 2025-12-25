@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1 import auth, users, claims
+from app.middleware.tenant_context import TenantContextMiddleware
 
 
 app = FastAPI(
@@ -14,11 +15,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
+    allow_origins=settings.ALLOWED_ORIGINS.split(","),
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
     allow_headers=["*"],
 )
+app.add_middleware(TenantContextMiddleware)
 
 
 @app.get("/")
@@ -27,6 +29,20 @@ async def root():
         "message": "Pharmacy Audit Platform API",
         "version": "1.0.0",
         "status": "running"
+    }
+
+@app.get("/pool-stats")
+async def get_pool_stats():
+    """Check database connection pool statistics."""
+    from app.core.database import engine
+    
+    pool = engine.pool
+    return {
+        "pool_size": pool.size(),
+        "checked_in_connections": pool.checkedin(),
+        "checked_out_connections": pool.checkedout(),
+        "overflow_connections": pool.overflow(),
+        "total_connections": pool.size() + pool.overflow()
     }
 
 @app.get("/health")

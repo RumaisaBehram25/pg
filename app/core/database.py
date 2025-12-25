@@ -4,13 +4,27 @@ from sqlalchemy.orm import sessionmaker, Session
 from fastapi import Request
 from app.core.config import settings
 
-engine = create_engine(settings.DATABASE_URL)
+# Connection pooling configuration
+engine = create_engine(
+    settings.DATABASE_URL,
+    pool_size=10,
+    max_overflow=20,
+    pool_timeout=30,
+    pool_recycle=3600,
+    pool_pre_ping=True,
+    echo=False,
+    future=True
+)
+
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 Base = declarative_base()
 
+
 def get_db(request: Request):
+    """Get database session with tenant context."""
     session = SessionLocal()
     try:
+        # Get tenant_id from request.state (set by TenantContextMiddleware)
         tenant_id = getattr(request.state, 'tenant_id', None)
         if tenant_id:
             session.execute(
@@ -23,5 +37,6 @@ def get_db(request: Request):
         raise
     finally:
         session.close()
+
 
 get_db_session = get_db

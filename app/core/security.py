@@ -1,9 +1,11 @@
+"""Security utilities for authentication and authorization."""
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+import uuid
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -13,14 +15,17 @@ security = HTTPBearer()
 
 
 def hash_password(password: str) -> str:
+    """Hash a plain password."""
     return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a plain password against a hashed password."""
     return pwd_context.verify(plain_password, hashed_password)
 
 
 def create_jwt(data: dict) -> str:
+    """Create a JWT token with expiration."""
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
@@ -29,6 +34,7 @@ def create_jwt(data: dict) -> str:
 
 
 def decode_jwt(token: str) -> dict:
+    """Decode a JWT token."""
     payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
     return payload
 
@@ -37,24 +43,65 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ):
-    """Extract and validate current user from JWT token."""
+    """
+    Extract and validate current user from JWT token.
+    
+    This function:
+    1. Decodes the JWT token
+    2. Extracts user information
+    3. Queries database to verify user exists
+    4. Checks if user is active
+    5. Verifies tenant_id matches
+    
+    Returns a CurrentUser object with user details.
+    """
     from app.models.user import User, UserRole
+    
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
     
     token = credentials.credentials
     
     try:
+        # Decode JWT token
         payload = decode_jwt(token)
         user_id = payload.get("user_id")
         tenant_id = payload.get("tenant_id")
         email = payload.get("email")
         role = payload.get("role")
         
+        # Validate all required fields are present
         if not all([user_id, tenant_id, email, role]):
+            raise credentials_exception
+        
+        # Validate user_id is a valid UUID format
+        try:
+            user_uuid = uuid.UUID(str(user_id))
+        except (ValueError, TypeError, AttributeError):
+            raise credentials_exception
+        
+        # Query database to verify user still exists and is active
+        user = db.query(User).filter(User.id == user_uuid).first()
+        
+        # User not found in database
+        if user is None:
+            raise credentials_exception
+        
+        # Check if user account is active
+        if not user.is_active:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token payload"
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is inactive or deactivated"
             )
         
+        # Verify tenant_id matches (extra security check)
+        if str(user.tenant_id) != str(tenant_id):
+            raise credentials_exception
+        
+        # Create CurrentUser object with validated data
         class CurrentUser:
             def __init__(self, user_id, tenant_id, email, role):
                 self.id = user_id
@@ -72,7 +119,11 @@ def get_current_user(
 
 
 def get_current_admin(current_user = Depends(get_current_user)):
-    """Ensure current user is an ADMIN."""
+    """
+    Ensure current user has ADMIN role.
+    
+    Use this dependency for endpoints that require admin access.
+    """
     from app.models.user import UserRole
     
     if current_user.role != UserRole.ADMIN:
