@@ -1,9 +1,11 @@
+
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+import uuid
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -13,14 +15,17 @@ security = HTTPBearer()
 
 
 def hash_password(password: str) -> str:
+    """Hash a plain password."""
     return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a plain password against a hashed password."""
     return pwd_context.verify(plain_password, hashed_password)
 
 
 def create_jwt(data: dict) -> str:
+    """Create a JWT token with expiration."""
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
@@ -29,6 +34,7 @@ def create_jwt(data: dict) -> str:
 
 
 def decode_jwt(token: str) -> dict:
+    """Decode a JWT token."""
     payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
     return payload
 
@@ -37,8 +43,14 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ):
-    """Extract and validate current user from JWT token."""
+
     from app.models.user import User, UserRole
+    
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
     
     token = credentials.credentials
     
@@ -50,10 +62,26 @@ def get_current_user(
         role = payload.get("role")
         
         if not all([user_id, tenant_id, email, role]):
+            raise credentials_exception
+        
+        try:
+            user_uuid = uuid.UUID(str(user_id))
+        except (ValueError, TypeError, AttributeError):
+            raise credentials_exception
+        
+        user = db.query(User).filter(User.id == user_uuid).first()
+        
+        if user is None:
+            raise credentials_exception
+        
+        if not user.is_active:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token payload"
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is inactive or deactivated"
             )
+        
+        if str(user.tenant_id) != str(tenant_id):
+            raise credentials_exception
         
         class CurrentUser:
             def __init__(self, user_id, tenant_id, email, role):
@@ -72,7 +100,7 @@ def get_current_user(
 
 
 def get_current_admin(current_user = Depends(get_current_user)):
-    """Ensure current user is an ADMIN."""
+
     from app.models.user import UserRole
     
     if current_user.role != UserRole.ADMIN:

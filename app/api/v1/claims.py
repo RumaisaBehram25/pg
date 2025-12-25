@@ -1,7 +1,11 @@
-
+"""
+Claims API - Upload and Job Management with Job-Specific Claims Viewing
+"""
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
-from typing import List
+from sqlalchemy import text
+from typing import List, Optional
+from datetime import date
 import hashlib
 from pathlib import Path
 
@@ -11,6 +15,8 @@ from app.services import job_service
 from app import models
 from app.schemas import job as job_schemas
 from app.workers.celery_tasks import process_csv_task
+from pydantic import BaseModel
+
 
 router = APIRouter()
 
@@ -21,15 +27,7 @@ async def upload_csv(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """
-    Upload a CSV file for claims ingestion
-    
-    Validates file type (must be .csv)
-    Validates file size (max 10MB)
-    Saves file temporarily
-    Creates ingestion job record
-    Returns job_id for status tracking
-    """
+   
     
     if not file.filename.endswith('.csv'):
         raise HTTPException(
@@ -64,7 +62,6 @@ async def upload_csv(
     with open(file_path, "wb") as f:
         f.write(content)
     
-    
     job = job_service.create_job(
         db=db,
         tenant_id=str(current_user.tenant_id),
@@ -72,7 +69,6 @@ async def upload_csv(
         file_hash=file_hash
     )
     
-   
     task = process_csv_task.delay(
         str(job.id),
         str(file_path),
@@ -92,15 +88,6 @@ async def get_job_status(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """
-    Get status of an ingestion job
-    
-    Returns:
-    - job_id
-    - status (pending/processing/completed/failed)
-    - row counts (total, success, errors)
-    - timestamps
-    """
     
     job = job_service.get_job(
         db=db,
@@ -131,7 +118,6 @@ async def list_jobs(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-   
     jobs = job_service.list_jobs(
         db=db,
         tenant_id=str(current_user.tenant_id),
@@ -161,8 +147,6 @@ async def get_job_errors(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-   
-    from sqlalchemy import text
     db.execute(
         text("SET app.current_tenant_id = :tenant_id"),
         {"tenant_id": str(current_user.tenant_id)}
@@ -194,3 +178,77 @@ async def get_job_errors(
             for error in errors
         ]
     }
+
+
+class ClaimResponse(BaseModel):
+    id: str
+    claim_number: str
+    patient_id: str
+    drug_code: str
+    drug_name: Optional[str]
+    amount: float
+    quantity: Optional[int]
+    days_supply: Optional[int]
+    prescription_date: Optional[date]
+    ingestion_id: str
+    created_at: str
+    
+    class Config:
+        from_attributes = True
+
+
+class JobClaimsResponse(BaseModel):
+    job_id: str
+    total_claims: int
+    claims: List[ClaimResponse]
+
+
+@router.get("/jobs/{job_id}/claims", response_model=JobClaimsResponse)
+async def get_job_claims(
+    job_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+   
+    claims = db.query(models.Claim)\
+        .filter(models.Claim.ingestion_id == job_id)\
+        .order_by(models.Claim.claim_number)\
+        .all()
+    
+    if not claims:
+        job = db.query(models.IngestionJob).filter(
+            models.IngestionJob.id == job_id
+        ).first()
+        
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job {job_id} not found"
+            )
+        
+        return JobClaimsResponse(
+            job_id=job_id,
+            total_claims=0,
+            claims=[]
+        )
+    
+    return JobClaimsResponse(
+        job_id=job_id,
+        total_claims=len(claims),
+        claims=[
+            ClaimResponse(
+                id=str(claim.id),
+                claim_number=claim.claim_number,
+                patient_id=claim.patient_id,
+                drug_code=claim.drug_code,
+                drug_name=claim.drug_name,
+                amount=float(claim.amount),
+                quantity=claim.quantity,
+                days_supply=claim.days_supply,
+                prescription_date=claim.prescription_date,
+                ingestion_id=str(claim.ingestion_id),
+                created_at=claim.created_at.isoformat()
+            )
+            for claim in claims
+        ]
+    )
