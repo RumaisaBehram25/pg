@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker
 from fastapi import Request
 from app.core.config import settings
 
@@ -20,6 +20,7 @@ Base = declarative_base()
 
 
 def get_db(request: Request):
+    """Get database session with tenant context."""
     session = SessionLocal()
     try:
         tenant_id = getattr(request.state, 'tenant_id', None)

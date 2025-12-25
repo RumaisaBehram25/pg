@@ -1,4 +1,3 @@
-
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
 from passlib.context import CryptContext
@@ -43,7 +42,6 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ):
-
     from app.models.user import User, UserRole
     
     credentials_exception = HTTPException(
@@ -55,12 +53,14 @@ def get_current_user(
     token = credentials.credentials
     
     try:
+        # Decode JWT token
         payload = decode_jwt(token)
         user_id = payload.get("user_id")
         tenant_id = payload.get("tenant_id")
         email = payload.get("email")
         role = payload.get("role")
         
+        # Validate all required fields are present
         if not all([user_id, tenant_id, email, role]):
             raise credentials_exception
         
@@ -100,7 +100,6 @@ def get_current_user(
 
 
 def get_current_admin(current_user = Depends(get_current_user)):
-
     from app.models.user import UserRole
     
     if current_user.role != UserRole.ADMIN:
