@@ -108,7 +108,7 @@ Create a database named `pharma_db` in PostgreSQL.
 
 Create a `.env` file in the project root:
 ```env
-DATABASE_URL=postgresql://pharmacy_app:your_password@localhost:5432/pharma_db
+DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/pharma_db
 SECRET_KEY=your-secret-key-min-32-characters-long
 JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
