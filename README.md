@@ -116,16 +116,35 @@ APP_NAME=Pharmacy Audit Platform
 VERSION=1.0.0
 ```
 
+**⚠️ IMPORTANT:** 
+- Replace `YOUR_PASSWORD` with your actual PostgreSQL password
+- If using a different port (e.g., 5433), update the port number
+- On Windows, use `127.0.0.1` instead of `localhost` if you get connection errors
+
 ### Step 8: Run Database Migrations
 ```bash
 alembic upgrade head
 ```
+
+### Update Database User (For Production)
+
+**For Development:** You can continue using the `postgres` user.
+
+**For Production Deployment:** Create a dedicated database user with limited permissions.
 
 ### Step 9: Create Application Database User
 
 Run the setup script:
 ```bash
 python create_app_user.py
+```
+This script will automatically create the `pharmacy_app` user and grant necessary permissions.
+
+**Then update `.env` to use the application user:**
+
+```env
+# Database (Production - use pharmacy_app user)
+DATABASE_URL=postgresql://pharmacy_app:secure_password_here@localhost:5432/pharma_db
 ```
 
 ### Step 10: Start the Application
@@ -173,6 +192,7 @@ celery -A app.core.celery_config:celery_app worker --loglevel=info --pool=solo
 | `/api/v1/claims/jobs/{job_id}` | GET | Authenticated | Get job status |
 | `/api/v1/claims/jobs` | GET | Authenticated | List recent jobs |
 | `/api/v1/claims/jobs/{job_id}/errors` | GET | Authenticated | Get error details for job |
+| `/api/v1/claims/jobs/{job_id}/claims` | GET | Authenticated | View uploaded claims from job |
 
 ## CSV Upload Guide
 
@@ -203,13 +223,16 @@ CLM003,PAT789,NDC11111,Atorvastatin 20mg,42.30,30,30,2024-01-17
 The system validates each row and generates error codes:
 
 - **E001:** Missing required field
+- **E002:** Duplicate claim_number in same file
 - **E003:** Invalid amount format
 - **E004:** Amount must be positive
 - **E005:** Amount too high (>$10,000)
-- **E006:** Duplicate claim_number
 - **E007:** Invalid quantity
 - **E008:** Invalid days_supply
 - **E009:** Invalid date format
+- **E010:** Field too long
+- **E011:** Invalid drug code format
+- **E012:** Future date not allowed
 
 
 ## Testing the API
@@ -218,10 +241,10 @@ The system validates each row and generates error codes:
 ```json
 POST /api/v1/auth/register
 {
-  "pharmacy_name": "My Pharmacy",
-  "admin_email": "admin@mypharmacy.com",
-  "admin_name": "Admin Name",
-  "password": "admin123"
+  "pharmacy_name": "CVS Pharmacy Chicago",
+  "admin_email": "admin@cvs-chicago.com",
+  "admin_name": "John Smith",
+  "password": "SecurePassword123!"
 }
 ```
 
@@ -229,23 +252,27 @@ POST /api/v1/auth/register
 ```json
 POST /api/v1/auth/login
 {
-  "email": "admin@mypharmacy.com",
-  "password": "admin123"
+  "email": "admin@cvs-chicago.com",
+  "password": "SecurePassword123!"
 }
 ```
 
 **Response:**
 ```json
 {
-  "access_token": "eyJhbGc...",
-  "token_type": "bearer"
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "user_id": "f5f523a8-f978-4cd0-a50b-c12e62c54189",
+  "tenant_id": "f1b68563-a3d4-4f44-bf85-54b16e032bc1",
+  "email": "admin@cvs-chicago.com",
+  "role": "ADMIN"
 }
 ```
 
 ### 3. Upload CSV File
 ```bash
 POST /api/v1/claims/upload
-Authorization: Bearer <token>
+Authorization: Bearer <your_token>
 Content-Type: multipart/form-data
 
 file: [select your CSV file]
@@ -254,48 +281,81 @@ file: [select your CSV file]
 **Response:**
 ```json
 {
-  "job_id": "abc-123-def-456",
+  "job_id": "624c73a8-5c8e-4923-bd78-7ff38cbdae12",
   "status": "pending",
-  "message": "File uploaded successfully. Processing will begin shortly."
+  "message": "File 'claims.csv' uploaded successfully. Processing will begin shortly."
 }
 ```
 
 ### 4. Check Job Status
 ```bash
-GET /api/v1/claims/jobs/abc-123-def-456
-Authorization: Bearer <token>
+GET /api/v1/claims/jobs/624c73a8-5c8e-4923-bd78-7ff38cbdae12
+Authorization: Bearer <your_token>
 ```
 
 **Response:**
 ```json
 {
-  "job_id": "abc-123-def-456",
+  "job_id": "624c73a8-5c8e-4923-bd78-7ff38cbdae12",
   "status": "completed",
   "file_name": "claims.csv",
   "total_rows": 100,
-  "success_count": 98,
-  "error_count": 2,
-  "started_at": "2024-12-23T10:30:00Z",
-  "completed_at": "2024-12-23T10:30:03Z"
+  "success_count": 94,
+  "error_count": 6,
+  "started_at": "2024-12-25T10:30:00Z",
+  "completed_at": "2024-12-25T10:30:15Z"
 }
 ```
 
 ### 5. View Errors (if any)
 ```bash
-GET /api/v1/claims/jobs/abc-123-def-456/errors
-Authorization: Bearer <token>
+GET /api/v1/claims/jobs/624c73a8-5c8e-4923-bd78-7ff38cbdae12/errors
+Authorization: Bearer <your_token>
 ```
 
 **Response:**
 ```json
 {
-  "job_id": "abc-123-def-456",
-  "total_errors": 2,
+  "job_id": "624c73a8-5c8e-4923-bd78-7ff38cbdae12",
+  "total_errors": 6,
   "errors": [
     {
-      "row_number": 5,
-      "error_message": "[E001] patient_id cannot be empty",
-      "raw_row_data": "{...}"
+      "row_number": 3,
+      "error_message": "E001: Required field missing or empty: patient_id",
+      "raw_row_data": "{'claim_number': 'CLM003', 'patient_id': '', ...}"
+    },
+    {
+      "row_number": 7,
+      "error_message": "E004: Amount must be greater than zero: $0.00",
+      "raw_row_data": "{'claim_number': 'CLM007', 'amount': '0', ...}"
+    }
+  ]
+}
+```
+
+### 6. View Uploaded Claims
+```bash
+GET /api/v1/claims/jobs/624c73a8-5c8e-4923-bd78-7ff38cbdae12/claims
+Authorization: Bearer <your_token>
+```
+
+**Response:**
+```json
+{
+  "job_id": "624c73a8-5c8e-4923-bd78-7ff38cbdae12",
+  "total_claims": 94,
+  "claims": [
+    {
+      "id": "a1b2c3d4-...",
+      "claim_number": "CLM001",
+      "patient_id": "PAT001",
+      "drug_code": "NDC12345",
+      "drug_name": "Lisinopril 10mg",
+      "amount": 50.00,
+      "quantity": 30,
+      "days_supply": 30,
+      "prescription_date": "2024-12-01",
+      "created_at": "2024-12-25T10:30:05Z"
     }
   ]
 }

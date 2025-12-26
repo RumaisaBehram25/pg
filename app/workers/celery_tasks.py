@@ -1,4 +1,3 @@
-
 from celery import Task
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
@@ -44,7 +43,7 @@ def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
     db = self.db
     
     print(f"\n{'='*80}")
-    print(f"🚀 STARTING CSV PROCESSING (INDEPENDENT MODE)")
+    print(f"STARTING CSV PROCESSING (INDEPENDENT MODE)")
     print(f"Job ID: {job_id}")
     print(f"Tenant ID: {tenant_id}")
     print(f"File: {file_path}")
@@ -72,7 +71,7 @@ def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
         _cleanup_file(file_path)
         
         print(f"\n{'='*80}")
-        print(f"✅ JOB COMPLETED")
+        print(f"JOB COMPLETED")
         print(f"Total rows: {result['total_rows']}")
         print(f"Successful: {result['success_count']}")
         print(f"Errors: {result['error_count']}")
@@ -87,7 +86,7 @@ def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
     
     except Exception as e:
         print(f"\n{'='*80}")
-        print(f"❌ JOB FAILED: {str(e)}")
+        print(f" JOB FAILED: {str(e)}")
         print(f"{'='*80}\n")
         
         _mark_job_failed(db, job_id)
@@ -99,7 +98,7 @@ def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
 
 
 def _set_tenant_context(db, tenant_id: str):
-    print(f"🔒 Setting RLS context for tenant: {tenant_id}")
+    print(f" Setting RLS context for tenant: {tenant_id}")
     db.execute(
         text("SET app.current_tenant_id = :tenant_id"),
         {"tenant_id": tenant_id}
@@ -108,16 +107,16 @@ def _set_tenant_context(db, tenant_id: str):
     current_tenant = db.execute(
         text("SELECT current_setting('app.current_tenant_id', true)")
     ).scalar()
-    print(f"✅ RLS context verified: {current_tenant}\n")
+    print(f" RLS context verified: {current_tenant}\n")
 
 
 def _get_job(db, job_id: str):
     job = db.query(IngestionJob).filter(IngestionJob.id == job_id).first()
     
     if job:
-        print(f"📋 Found job: {job.filename}\n")
+        print(f" Found job: {job.filename}\n")
     else:
-        print(f"❌ Job {job_id} not found!")
+        print(f" Job {job_id} not found!")
     
     return job
 
@@ -127,7 +126,7 @@ def _update_job_status(db, job, status: str):
     if status == "processing":
         job.started_at = datetime.utcnow()
     db.commit()
-    print(f"📊 Job status: {status}\n")
+    print(f" Job status: {status}\n")
 
 
 def _read_csv_file(file_path: Path):
@@ -136,14 +135,14 @@ def _read_csv_file(file_path: Path):
     if not file_path.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
     
-    print(f"📄 Reading: {file_path.name}")
+    print(f" Reading: {file_path.name}")
     
     rows = read_csv_file(str(file_path))
     
     if not rows:
         raise ValueError("CSV file is empty")
     
-    print(f"✅ Read {len(rows)} rows\n")
+    print(f" Read {len(rows)} rows\n")
     
     return rows
 
@@ -156,14 +155,14 @@ def _validate_csv_structure(rows):
     if missing_headers:
         raise ValueError(f"Missing required columns: {', '.join(sorted(missing_headers))}")
     
-    print(f"✅ CSV headers valid\n")
+    print(f" CSV headers valid\n")
 
 
 def _process_rows(db, rows, job_id: str, tenant_id: str):
    
     validator = CSVValidator()
     
-    print(f"🔄 Processing rows (independent mode - no DB duplicate check)...\n")
+    print(f" Processing rows (independent mode - no DB duplicate check)...\n")
     
     total_rows = 0
     success_count = 0
@@ -178,13 +177,13 @@ def _process_rows(db, rows, job_id: str, tenant_id: str):
             if error:
                 _log_error(db, job_id, tenant_id, error, row)
                 error_count += 1
-                print(f"   ❌ Row {row_number}: {error.error_code} - {error.error_message}")
+                print(f"    Row {row_number}: {error.error_code} - {error.error_message}")
             else:
                 _create_claim(db, row, job_id, tenant_id)
                 success_count += 1
                 
                 if success_count % 50 == 0:
-                    print(f"   ✅ Progress: {success_count} claims saved...")
+                    print(f"    Progress: {success_count} claims saved...")
         
         except Exception as e:
             error_count += 1
@@ -194,14 +193,14 @@ def _process_rows(db, rows, job_id: str, tenant_id: str):
                 error_message=f"Unexpected error: {str(e)}"
             )
             _log_error(db, job_id, tenant_id, error, row)
-            print(f"   ❌ Row {row_number}: E999 - {e}")
+            print(f"    Row {row_number}: E999 - {e}")
         
         if total_rows % 50 == 0:
             db.commit()
     
-    print(f"\n💾 Final commit...")
+    print(f"\n Final commit...")
     db.commit()
-    print(f"✅ All data saved!\n")
+    print(f" All data saved!\n")
     
     return {
         "total_rows": total_rows,
@@ -257,8 +256,7 @@ def _log_error(db, job_id: str, tenant_id: str, error: ValidationError, row: dic
         tenant_id=uuid.UUID(tenant_id),
         ingestion_id=uuid.UUID(job_id),
         row_number=error.row_number,
-        error_code=error.error_code,
-        error_message=error.error_message,
+        error_message=f"{error.error_code}: {error.error_message}",
         raw_row_data=str(row)[:500]
     )
     db.add(error_record)
@@ -281,13 +279,13 @@ def _mark_job_failed(db, job_id: str):
             job.completed_at = datetime.utcnow()
             db.commit()
     except Exception as e:
-        print(f"⚠️  Failed to update job status: {e}")
+        print(f"  Failed to update job status: {e}")
 
 
 def _cleanup_file(file_path: Path):
     try:
         if file_path.exists():
             file_path.unlink()
-            print(f"🗑️  Deleted: {file_path.name}")
+            print(f"  Deleted: {file_path.name}")
     except Exception as e:
-        print(f"⚠️  Failed to delete file: {e}")
+        print(f"  Failed to delete file: {e}")
