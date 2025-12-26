@@ -109,11 +109,15 @@ Create a database named `pharma_db` in PostgreSQL.
 Create a `.env` file in the project root:
 ```env
 DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/pharma_db
-SECRET_KEY=your-secret-key-min-32-characters-long
-JWT_ALGORITHM=HS256
+SECRET_KEY=super-secret-key-change-this-in-production-min-32-characters-long 
+JWT_ALGORITHM=HS256 
 ACCESS_TOKEN_EXPIRE_MINUTES=30
-APP_NAME=Pharmacy Audit Platform
+
+APP_NAME=Pharmacy Audit Platform 
 VERSION=1.0.0
+
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080,http://127.0.0.1:3000
+REDIS_URL=redis://localhost:6379/0
 ```
 
 **⚠️ IMPORTANT:** 
