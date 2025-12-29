@@ -134,7 +134,6 @@ def delete_user(
     current_user = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
-    """Delete a user from the tenant."""
     if str(current_user.id) == user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

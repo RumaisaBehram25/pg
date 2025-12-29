@@ -74,7 +74,6 @@ def register_tenant(data: TenantRegister, request: Request, db: Session = Depend
 
 @router.post("/login", response_model=LoginResponse)
 def login(credentials: UserLogin, request: Request, db: Session = Depends(get_db)):
-    """Login and get JWT token."""
     user = db.query(User).filter(User.email == credentials.email).first()
 
     if not user or not verify_password(credentials.password, user.hashed_password):

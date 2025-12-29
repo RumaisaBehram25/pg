@@ -1,6 +1,4 @@
-"""
-Claims API - Upload and Job Management with Job-Specific Claims Viewing
-"""
+
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import text
