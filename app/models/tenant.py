@@ -19,3 +19,4 @@ class Tenant(Base):
     ingestion_jobs = relationship("IngestionJob", back_populates="tenant")
     rules = relationship("Rule", back_populates="tenant")
     audit_logs = relationship("AuditLog", back_populates="tenant")
+    

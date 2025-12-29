@@ -2,8 +2,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.v1 import auth, users, claims
+from app.api.v1 import auth, users, claims, rules 
 from app.middleware.tenant_context import TenantContextMiddleware
+
 
 
 app = FastAPI(
@@ -63,3 +64,5 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     print(" Pharmacy Audit Platform API shutting down...")
+
+app.include_router(rules.router, prefix="/api/v1")
