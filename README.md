@@ -386,25 +386,21 @@ docker start redis
 
 ## Quick Reference
 ```bash
-# Activate virtual environment
-.\venv\Scripts\Activate.ps1              # Windows PowerShell
-source venv/bin/activate                  # Mac/Linux
 
-# Install dependencies
+.\venv\Scripts\Activate.ps1              
+source venv/bin/activate                  
+
 pip install -r requirements.txt
 
-# Database setup
 alembic upgrade head
 python create_app_user.py
 
-# Start services
-uvicorn app.main:app --reload            # Terminal 1: FastAPI
-celery -A app.core.celery_config:celery_app worker --loglevel=info --pool=solo  # Terminal 2: Celery
-docker start redis                        # Terminal 3: Redis (if using Docker)
+uvicorn app.main:app --reload            
+celery -A app.core.celery_config:celery_app worker --loglevel=info --pool=solo  
+docker start redis                       
 
-# Verify services
-curl http://localhost:8000/health         # FastAPI health check
-redis-cli ping                            # Redis health check
+curl http://localhost:8000/health         
+redis-cli ping                            
 ```
 
 ## Troubleshooting
