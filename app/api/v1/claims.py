@@ -1,5 +1,7 @@
-
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+"""
+Complete updated app/api/v1/claims.py with pagination fix
+"""
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import List, Optional
@@ -25,8 +27,6 @@ async def upload_csv(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-   
-    
     if not file.filename.endswith('.csv'):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -86,7 +86,6 @@ async def get_job_status(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    
     job = job_service.get_job(
         db=db,
         job_id=job_id,
@@ -178,6 +177,7 @@ async def get_job_errors(
     }
 
 
+# Schemas defined here (keep these)
 class ClaimResponse(BaseModel):
     id: str
     claim_number: str
@@ -198,41 +198,90 @@ class ClaimResponse(BaseModel):
 class JobClaimsResponse(BaseModel):
     job_id: str
     total_claims: int
+    returned_claims: int      # NEW: Claims in this response
+    skip: int                  # NEW: Pagination offset
+    limit: int                 # NEW: Page size
+    has_more: bool            # NEW: More pages available?
+    current_page: int         # NEW: Current page number
+    total_pages: int          # NEW: Total pages
     claims: List[ClaimResponse]
 
 
+# ✅ UPDATED ENDPOINT WITH PAGINATION
 @router.get("/jobs/{job_id}/claims", response_model=JobClaimsResponse)
 async def get_job_claims(
     job_id: str,
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum records to return (1-1000)"),
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-   
+    """
+    Get claims from a specific ingestion job with PAGINATION.
+    
+    For large files (5000+ claims), use pagination:
+    - First page: skip=0, limit=100
+    - Second page: skip=100, limit=100
+    - Third page: skip=200, limit=100
+    
+    Args:
+        job_id: UUID of the ingestion job
+        skip: Number of records to skip (default: 0)
+        limit: Maximum records to return (default: 100, max: 1000)
+    
+    Returns:
+        Paginated list of claims with metadata
+    """
+    # Set tenant context for RLS
+    db.execute(
+        text("SET app.current_tenant_id = :tenant_id"),
+        {"tenant_id": str(current_user.tenant_id)}
+    )
+    
+    # Verify job exists
+    job = db.query(models.IngestionJob).filter(
+        models.IngestionJob.id == job_id,
+        models.IngestionJob.tenant_id == current_user.tenant_id
+    ).first()
+    
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job {job_id} not found"
+        )
+    
+    # Get TOTAL count (for pagination metadata)
+    total_claims = db.query(models.Claim).filter(
+        models.Claim.ingestion_id == job_id,
+        models.Claim.tenant_id == current_user.tenant_id
+    ).count()
+    
+    # Get PAGINATED claims (only requested page)
     claims = db.query(models.Claim)\
-        .filter(models.Claim.ingestion_id == job_id)\
-        .order_by(models.Claim.claim_number)\
+        .filter(
+            models.Claim.ingestion_id == job_id,
+            models.Claim.tenant_id == current_user.tenant_id
+        )\
+        .order_by(models.Claim.created_at.desc())\
+        .offset(skip)\
+        .limit(limit)\
         .all()
     
-    if not claims:
-        job = db.query(models.IngestionJob).filter(
-            models.IngestionJob.id == job_id
-        ).first()
-        
-        if not job:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Job {job_id} not found"
-            )
-        
-        return JobClaimsResponse(
-            job_id=job_id,
-            total_claims=0,
-            claims=[]
-        )
+    # Calculate pagination metadata
+    returned_claims = len(claims)
+    has_more = (skip + limit) < total_claims
+    current_page = (skip // limit) + 1 if limit > 0 else 1
+    total_pages = (total_claims + limit - 1) // limit if limit > 0 else 1
     
     return JobClaimsResponse(
         job_id=job_id,
-        total_claims=len(claims),
+        total_claims=total_claims,
+        returned_claims=returned_claims,
+        skip=skip,
+        limit=limit,
+        has_more=has_more,
+        current_page=current_page,
+        total_pages=total_pages,
         claims=[
             ClaimResponse(
                 id=str(claim.id),

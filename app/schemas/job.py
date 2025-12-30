@@ -1,18 +1,21 @@
-
+"""
+Complete updated app/schemas/job.py
+Add the ClaimResponse and JobClaimsResponse at the end
+"""
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, date
 
+
+# ========== EXISTING SCHEMAS (Keep these as-is) ==========
 
 class JobResponse(BaseModel):
-    
     job_id: str
     status: str
     message: str
 
 
 class JobStatusResponse(BaseModel):
-   
     job_id: str
     status: str
     file_name: str
@@ -24,7 +27,6 @@ class JobStatusResponse(BaseModel):
 
 
 class JobSummary(BaseModel):
-   
     job_id: str
     status: str
     file_name: str
@@ -36,19 +38,78 @@ class JobSummary(BaseModel):
 
 
 class JobListResponse(BaseModel):
-    
     jobs: List[JobSummary]
 
 
 class JobErrorDetail(BaseModel):
-   
     row_number: int
     error_message: str
     raw_row_data: str
 
 
 class JobErrorsResponse(BaseModel):
-
     job_id: str
     total_errors: int
     errors: List[JobErrorDetail]
+
+
+# ========== NEW SCHEMAS FOR CLAIMS (Add these) ==========
+
+class ClaimResponse(BaseModel):
+    """Individual claim response"""
+    id: str
+    claim_number: str
+    patient_id: str
+    drug_code: str
+    drug_name: Optional[str]
+    amount: float
+    quantity: Optional[int]
+    days_supply: Optional[int]
+    prescription_date: Optional[date]
+    ingestion_id: str
+    created_at: str
+    
+    class Config:
+        from_attributes = True
+
+
+class JobClaimsResponse(BaseModel):
+    """Paginated claims response with metadata"""
+    job_id: str
+    total_claims: int           # Total claims in the job
+    returned_claims: int        # Claims in this response
+    skip: int                   # Pagination offset
+    limit: int                  # Page size
+    has_more: bool             # More pages available?
+    current_page: int          # Current page number
+    total_pages: int           # Total number of pages
+    claims: List[ClaimResponse]
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "job_id": "abc-123-def-456",
+                "total_claims": 5000,
+                "returned_claims": 100,
+                "skip": 0,
+                "limit": 100,
+                "has_more": True,
+                "current_page": 1,
+                "total_pages": 50,
+                "claims": [
+                    {
+                        "id": "claim-uuid",
+                        "claim_number": "CLM001",
+                        "patient_id": "PAT123",
+                        "drug_code": "NDC12345",
+                        "drug_name": "Lisinopril 10mg",
+                        "amount": 50.00,
+                        "quantity": 30,
+                        "days_supply": 30,
+                        "prescription_date": "2025-01-15",
+                        "ingestion_id": "job-uuid",
+                        "created_at": "2025-12-29T10:30:00"
+                    }
+                ]
+            }
+        }
