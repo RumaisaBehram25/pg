@@ -1,10 +1,10 @@
-
 from typing import Dict, List, Tuple, Any
 from datetime import datetime, date
 from decimal import Decimal
 
 from app.models.claim import Claim, Rule
 
+print("🚀 NEW FRAUD ENGINE LOADED WITH CONTAINS SUPPORT!") 
 
 class FraudEngine:
 
@@ -93,10 +93,20 @@ class FraudEngine:
         return field_map.get(field)
     
     def _apply_operator(self, actual_value: Any, operator: str, expected_value: Any) -> bool:
-
+        """
+        Apply comparison operator between actual and expected values.
+        
+        Supports:
+        - Numeric operators: >, <, >=, <=, =, !=
+        - String operators: =, !=, CONTAINS, STARTS_WITH, IN, NOT_IN
+        - All string comparisons are case-insensitive
+        """
+        
+        # Convert Decimal to float for numeric comparisons
         if isinstance(actual_value, Decimal):
             actual_value = float(actual_value)
         
+        # Handle date comparisons
         if isinstance(actual_value, (date, datetime)):
             if isinstance(expected_value, str):
                 try:
@@ -104,7 +114,60 @@ class FraudEngine:
                 except:
                     return False
         
-        if operator == '>':
+        # Define string fields for case-insensitive comparison
+        string_fields = ['patient_id', 'drug_code', 'drug_name', 'claim_number']
+        is_string_value = isinstance(actual_value, str)
+        
+        # ✅ NEW: CONTAINS operator (case-insensitive)
+        if operator == 'CONTAINS':
+            if not is_string_value:
+                print(f"CONTAINS operator requires string field, got: {type(actual_value)}")
+                return False
+            return str(expected_value).lower() in str(actual_value).lower()
+        
+        # ✅ NEW: STARTS_WITH operator (case-insensitive)
+        elif operator == 'STARTS_WITH':
+            if not is_string_value:
+                print(f"STARTS_WITH operator requires string field, got: {type(actual_value)}")
+                return False
+            return str(actual_value).lower().startswith(str(expected_value).lower())
+        
+        # ✅ UPDATED: = operator (case-insensitive for strings)
+        elif operator == '=':
+            if is_string_value:
+                return str(actual_value).lower() == str(expected_value).lower()
+            else:
+                return actual_value == expected_value
+        
+        # ✅ UPDATED: != operator (case-insensitive for strings)
+        elif operator == '!=':
+            if is_string_value:
+                return str(actual_value).lower() != str(expected_value).lower()
+            else:
+                return actual_value != expected_value
+        
+        # ✅ UPDATED: IN operator (case-insensitive for strings)
+        elif operator == 'IN':
+            if isinstance(expected_value, list):
+                if is_string_value:
+                    # Case-insensitive list comparison
+                    return str(actual_value).lower() in [str(v).lower() for v in expected_value]
+                else:
+                    return actual_value in expected_value
+            return False
+        
+        # ✅ UPDATED: NOT_IN operator (case-insensitive for strings)
+        elif operator == 'NOT_IN':
+            if isinstance(expected_value, list):
+                if is_string_value:
+                    # Case-insensitive list comparison
+                    return str(actual_value).lower() not in [str(v).lower() for v in expected_value]
+                else:
+                    return actual_value not in expected_value
+            return True
+        
+        # Numeric-only operators
+        elif operator == '>':
             return actual_value > expected_value
         elif operator == '<':
             return actual_value < expected_value
@@ -112,18 +175,7 @@ class FraudEngine:
             return actual_value >= expected_value
         elif operator == '<=':
             return actual_value <= expected_value
-        elif operator == '=':
-            return actual_value == expected_value
-        elif operator == '!=':
-            return actual_value != expected_value
-        elif operator == 'IN':
-            if isinstance(expected_value, list):
-                return actual_value in expected_value
-            return False
-        elif operator == 'NOT_IN':
-            if isinstance(expected_value, list):
-                return actual_value not in expected_value
-            return True
+        
         else:
             print(f"Unknown operator: {operator}")
             return False
@@ -171,10 +223,25 @@ class FraudEngine:
             
             details = []
             for mc in serializable_matched_conditions:
-                detail = (
-                    f"{mc['field']} {mc['operator']} {mc['expected_value']} "
-                    f"(actual: {mc['actual_value']})"
-                )
+                # ✅ NEW: Format details based on operator type
+                operator = mc['operator']
+                field = mc['field']
+                expected = mc['expected_value']
+                actual = mc['actual_value']
+                
+                if operator == 'CONTAINS':
+                    detail = f"{field} contains '{expected}' (actual: {actual})"
+                elif operator == 'STARTS_WITH':
+                    detail = f"{field} starts with '{expected}' (actual: {actual})"
+                elif operator == 'IN':
+                    detail = f"{field} in {expected} (actual: {actual})"
+                elif operator == 'NOT_IN':
+                    detail = f"{field} not in {expected} (actual: {actual})"
+                else:
+                    detail = (
+                        f"{field} {operator} {expected} "
+                        f"(actual: {actual})"
+                    )
                 details.append(detail)
             
             explanation["details"] = details

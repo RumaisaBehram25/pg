@@ -27,7 +27,8 @@ class RuleCondition(BaseModel):
     
     @validator('operator')
     def validate_operator(cls, v):
-        allowed_operators = ['>', '<', '>=', '<=', '=', '!=', 'IN', 'NOT_IN']
+        # ✅ UPDATED: Added CONTAINS and STARTS_WITH
+        allowed_operators = ['>', '<', '>=', '<=', '=', '!=', 'IN', 'NOT_IN', 'CONTAINS', 'STARTS_WITH']
         if v not in allowed_operators:
             raise ValueError(f"Operator must be one of: {', '.join(allowed_operators)}")
         return v
