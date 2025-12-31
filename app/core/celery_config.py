@@ -1,11 +1,12 @@
 from celery import Celery
 from app.core.config import settings
 
+
 celery_app = Celery(
     "pharmacy_audit_platform",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=['app.workers.celery_tasks']
+    include=['app.workers.celery_tasks', 'app.workers.fraud_detection_task'],
 )
 
 

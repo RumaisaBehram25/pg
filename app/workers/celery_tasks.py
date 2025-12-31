@@ -9,6 +9,7 @@ from app.core.celery_config import celery_app
 from app.core.config import settings
 from app.models.claim import Claim, IngestionJob, IngestionError
 from app.services.csv_validator import CSVValidator, ValidationError
+from app.workers.fraud_detection_task import detect_fraud_for_job
 
 
 engine = create_engine(
@@ -269,7 +270,12 @@ def _finalize_job(db, job, result: dict):
     job.failed_rows = result['error_count']
     job.completed_at = datetime.utcnow()
     db.commit()
-
+    
+    try:
+        detect_fraud_for_job.delay(str(job.id), str(job.tenant_id))
+        print(f"🔍 Fraud detection triggered for job {job.id}")
+    except Exception as e:
+        print(f"⚠️ Failed to trigger fraud detection: {e}")
 
 def _mark_job_failed(db, job_id: str):
     try:
