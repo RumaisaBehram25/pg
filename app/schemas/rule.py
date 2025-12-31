@@ -1,13 +1,10 @@
-"""
-Pydantic schemas for Rules Management API
-"""
+
 from pydantic import BaseModel, Field, validator
 from typing import Optional, List, Any, Dict
 from datetime import datetime
 from uuid import UUID
 
 
-# Rule Condition Schema
 class RuleCondition(BaseModel):
     """Single condition in a rule"""
     field: str = Field(..., description="Claim field to check (amount, quantity, etc.)")
@@ -27,14 +24,12 @@ class RuleCondition(BaseModel):
     
     @validator('operator')
     def validate_operator(cls, v):
-        # ✅ UPDATED: Added CONTAINS and STARTS_WITH
         allowed_operators = ['>', '<', '>=', '<=', '=', '!=', 'IN', 'NOT_IN', 'CONTAINS', 'STARTS_WITH']
         if v not in allowed_operators:
             raise ValueError(f"Operator must be one of: {', '.join(allowed_operators)}")
         return v
 
 
-# Rule Definition Schema
 class RuleDefinition(BaseModel):
     """Complete rule definition with logic and conditions"""
     logic: str = Field(..., description="Logic type: AND or OR")
@@ -120,11 +115,9 @@ class RuleVersionResponse(BaseModel):
 
 
 class RuleListResponse(BaseModel):
-    """Schema for list of rules"""
     rules: List[RuleResponse]
     total: int
 
 
 class RuleDetailResponse(RuleResponse):
-    """Schema for detailed rule response with versions"""
     versions: Optional[List[RuleVersionResponse]] = None
