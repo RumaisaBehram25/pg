@@ -1,7 +1,5 @@
-"""
-Rules Management API Endpoints
-"""
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List
 from uuid import UUID
@@ -27,16 +25,6 @@ async def create_rule(
     current_user: User = Depends(require_role("ADMIN")),
     db: Session = Depends(get_db)
 ):
-    """
-    Create a new fraud detection rule.
-    
-    **Admin Only**
-    
-    - **name**: Rule name (required)
-    - **description**: Rule description (optional)
-    - **rule_definition**: JSON structure with logic and conditions
-    - **is_active**: Whether rule is active (default: true)
-    """
     try:
         rule = RuleService.create_rule(
             db=db,
@@ -54,19 +42,12 @@ async def create_rule(
 
 @router.get("", response_model=RuleListResponse)
 async def list_rules(
-    active_only: bool = Query(False, description="Only return active rules"),
-    skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(100, ge=1, le=100, description="Maximum records to return"),
+    active_only: bool = Query(False),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    List all fraud detection rules for current tenant.
-    
-    - **active_only**: Filter to only active rules
-    - **skip**: Pagination offset
-    - **limit**: Maximum results (1-100)
-    """
     try:
         rules, total = RuleService.get_rules(
             db=db,
@@ -90,16 +71,10 @@ async def list_rules(
 @router.get("/{rule_id}", response_model=RuleDetailResponse)
 async def get_rule(
     rule_id: UUID,
-    include_versions: bool = Query(False, description="Include version history"),
+    include_versions: bool = Query(False),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    Get details of a specific rule.
-    
-    - **rule_id**: Rule UUID
-    - **include_versions**: Include version history
-    """
     rule = RuleService.get_rule_by_id(
         db=db,
         tenant_id=current_user.tenant_id,
@@ -112,13 +87,18 @@ async def get_rule(
             detail=f"Rule {rule_id} not found"
         )
     
-    # Convert to dict for response
     rule_dict = {
         "id": rule.id,
         "tenant_id": rule.tenant_id,
         "created_by": rule.created_by,
         "name": rule.name,
         "description": rule.description,
+        "rule_code": rule.rule_code,
+        "category": rule.category,
+        "severity": rule.severity,
+        "recoupable": rule.recoupable,
+        "logic_type": rule.logic_type,
+        "parameters": rule.parameters,
         "rule_definition": rule.rule_definition,
         "version": rule.version,
         "is_active": rule.is_active,
@@ -126,7 +106,6 @@ async def get_rule(
         "updated_at": rule.updated_at
     }
     
-    # Add versions if requested
     if include_versions:
         versions = RuleService.get_rule_versions(
             db=db,
@@ -145,14 +124,6 @@ async def update_rule(
     current_user: User = Depends(require_role("ADMIN")),
     db: Session = Depends(get_db)
 ):
-    """
-    Update an existing rule.
-    
-    **Admin Only**
-    
-    - Updates create new versions when rule_definition changes
-    - Version history preserved for audit trail
-    """
     rule = RuleService.update_rule(
         db=db,
         tenant_id=current_user.tenant_id,
@@ -177,14 +148,6 @@ async def toggle_rule(
     current_user: User = Depends(require_role("ADMIN")),
     db: Session = Depends(get_db)
 ):
-    """
-    Enable or disable a rule.
-    
-    **Admin Only**
-    
-    - Disabled rules are not used for fraud detection
-    - Enables/disables without deleting
-    """
     rule = RuleService.toggle_rule(
         db=db,
         tenant_id=current_user.tenant_id,
@@ -207,14 +170,6 @@ async def delete_rule(
     current_user: User = Depends(require_role("ADMIN")),
     db: Session = Depends(get_db)
 ):
-    """
-    Delete a rule (soft delete - deactivates rule).
-    
-    **Admin Only**
-    
-    - Rule is deactivated, not permanently deleted
-    - Version history preserved
-    """
     success = RuleService.delete_rule(
         db=db,
         tenant_id=current_user.tenant_id,
@@ -236,13 +191,6 @@ async def get_rule_versions(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    Get version history for a specific rule.
-    
-    - Returns all versions ordered by version number (newest first)
-    - Useful for audit trail and compliance
-    """
-    # Verify rule exists and user has access
     rule = RuleService.get_rule_by_id(
         db=db,
         tenant_id=current_user.tenant_id,
@@ -262,3 +210,27 @@ async def get_rule_versions(
     )
     
     return versions
+
+
+
+@router.post("/bulk-upload", response_model=dict)
+async def bulk_upload_rules(
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db)
+):
+    import json
+    
+    content = await file.read()
+    data = json.loads(content)
+    
+    rules_data = data.get("rules", [])
+    
+    result = RuleService.bulk_create_rules(
+        db=db,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        rules_data=rules_data
+    )
+    
+    return result

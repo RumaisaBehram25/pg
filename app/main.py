@@ -51,7 +51,7 @@ async def health_check():
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
-app.include_router(claims.router, prefix="/api/v1/claims", tags=["Claims"])  # ← IMPORTANT!
+app.include_router(claims.router, prefix="/api/v1/claims", tags=["Claims"])
 
 @app.on_event("startup")
 async def startup_event():

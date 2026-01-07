@@ -39,6 +39,7 @@ wheels/
 *.swo
 *~
 .DS_Store
+.cursor/
 
 # Alembic
 alembic/versions/*.pyc
@@ -58,6 +59,24 @@ celerybeat.pid
 # Redis
 dump.rdb
 
+# Temp and uploads
+tmp/
+uploads/
+
+# Code export files
+ALL_CODE*.txt
+
+# Test data files
+test_claims*.csv
+test_data*.csv
+*.csv
+
+# Documentation and reference files
+*.md
+!README.md
+*.docx
+rules/
+
 # Local Development & Debug Files
 daily_test/
 test_connection.py
@@ -72,10 +91,7 @@ add_auth_policy.py
 test_rls_existing_data.py
 test_user_api.py
 update_pass.py
-tmp
 test_upload.py
 test.py
 CODE_REFERENCE.md
-
-
 

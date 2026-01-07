@@ -22,18 +22,7 @@ class RuleService:
         user_id: UUID,
         rule_data: RuleCreate
     ) -> Rule:
-        """
-        Create a new fraud detection rule.
-        
-        Args:
-            db: Database session
-            tenant_id: Tenant UUID
-            user_id: User UUID (creator)
-            rule_data: Rule creation data
-            
-        Returns:
-            Created Rule object
-        """
+        """Create a new fraud detection rule."""
         # Set tenant context for RLS
         db.execute(
             text("SET app.current_tenant_id = :tenant_id"),
@@ -45,8 +34,14 @@ class RuleService:
             tenant_id=tenant_id,
             created_by=user_id,
             name=rule_data.name,
-            description=rule_data.description,
-            rule_definition=rule_data.rule_definition.model_dump(),
+            description=rule_data.description or rule_data.name,
+            rule_code=rule_data.rule_code,
+            category=rule_data.category,
+            severity=rule_data.severity,
+            recoupable=rule_data.recoupable,
+            logic_type=rule_data.logic_type,
+            parameters=rule_data.parameters,
+            rule_definition=rule_data.rule_definition or rule_data.parameters or {},
             version=1,
             is_active=rule_data.is_active
         )
@@ -68,53 +63,25 @@ class RuleService:
         skip: int = 0,
         limit: int = 100
     ) -> tuple[List[Rule], int]:
-        """
-        Get all rules for a tenant.
-        
-        Args:
-            db: Database session
-            tenant_id: Tenant UUID
-            active_only: Only return active rules
-            skip: Number of records to skip
-            limit: Maximum records to return
-            
-        Returns:
-            Tuple of (rules list, total count)
-        """
-        # Set tenant context for RLS
+        """Get all rules for a tenant."""
         db.execute(
             text("SET app.current_tenant_id = :tenant_id"),
             {"tenant_id": str(tenant_id)}
         )
         
-        # Build query
         query = db.query(Rule).filter(Rule.tenant_id == tenant_id)
         
         if active_only:
             query = query.filter(Rule.is_active == True)
         
-        # Get total count
         total = query.count()
-        
-        # Get paginated results
         rules = query.order_by(Rule.created_at.desc()).offset(skip).limit(limit).all()
         
         return rules, total
     
     @staticmethod
     def get_rule_by_id(db: Session, tenant_id: UUID, rule_id: UUID) -> Optional[Rule]:
-        """
-        Get a specific rule by ID.
-        
-        Args:
-            db: Database session
-            tenant_id: Tenant UUID
-            rule_id: Rule UUID
-            
-        Returns:
-            Rule object or None
-        """
-        # Set tenant context for RLS
+        """Get a specific rule by ID."""
         db.execute(
             text("SET app.current_tenant_id = :tenant_id"),
             {"tenant_id": str(tenant_id)}
@@ -133,54 +100,49 @@ class RuleService:
         rule_id: UUID,
         rule_data: RuleUpdate
     ) -> Optional[Rule]:
-        """
-        Update an existing rule (creates new version).
-        
-        Args:
-            db: Database session
-            tenant_id: Tenant UUID
-            user_id: User UUID (updater)
-            rule_id: Rule UUID
-            rule_data: Update data
-            
-        Returns:
-            Updated Rule object or None
-        """
-        # Set tenant context for RLS
+        """Update an existing rule."""
         db.execute(
             text("SET app.current_tenant_id = :tenant_id"),
             {"tenant_id": str(tenant_id)}
         )
         
-        # Get existing rule
         rule = RuleService.get_rule_by_id(db, tenant_id, rule_id)
         if not rule:
             return None
         
-        # Track if rule_definition changed
         definition_changed = False
         
-        # Update fields
         if rule_data.name is not None:
             rule.name = rule_data.name
-        
         if rule_data.description is not None:
             rule.description = rule_data.description
-        
-        if rule_data.rule_definition is not None:
-            rule.rule_definition = rule_data.rule_definition.model_dump()
-            rule.version += 1  # Increment version
+        if rule_data.rule_code is not None:
+            rule.rule_code = rule_data.rule_code
+        if rule_data.category is not None:
+            rule.category = rule_data.category
+        if rule_data.severity is not None:
+            rule.severity = rule_data.severity
+        if rule_data.recoupable is not None:
+            rule.recoupable = rule_data.recoupable
+        if rule_data.logic_type is not None:
+            rule.logic_type = rule_data.logic_type
+        if rule_data.parameters is not None:
+            rule.parameters = rule_data.parameters
             definition_changed = True
-        
+        if rule_data.rule_definition is not None:
+            rule.rule_definition = rule_data.rule_definition
+            definition_changed = True
         if rule_data.is_active is not None:
             rule.is_active = rule_data.is_active
+        
+        if definition_changed:
+            rule.version += 1
         
         rule.updated_at = datetime.utcnow()
         
         db.commit()
         db.refresh(rule)
         
-        # Create new version if definition changed
         if definition_changed:
             RuleService._create_rule_version(db, rule, user_id)
         
@@ -193,19 +155,7 @@ class RuleService:
         rule_id: UUID,
         is_active: bool
     ) -> Optional[Rule]:
-        """
-        Toggle rule active status.
-        
-        Args:
-            db: Database session
-            tenant_id: Tenant UUID
-            rule_id: Rule UUID
-            is_active: New active status
-            
-        Returns:
-            Updated Rule object or None
-        """
-        # Set tenant context for RLS
+        """Toggle rule active status."""
         db.execute(
             text("SET app.current_tenant_id = :tenant_id"),
             {"tenant_id": str(tenant_id)}
@@ -225,18 +175,7 @@ class RuleService:
     
     @staticmethod
     def delete_rule(db: Session, tenant_id: UUID, rule_id: UUID) -> bool:
-        """
-        Delete a rule (soft delete by setting is_active=False).
-        
-        Args:
-            db: Database session
-            tenant_id: Tenant UUID
-            rule_id: Rule UUID
-            
-        Returns:
-            True if deleted, False if not found
-        """
-        # Set tenant context for RLS
+        """Delete a rule (soft delete)."""
         db.execute(
             text("SET app.current_tenant_id = :tenant_id"),
             {"tenant_id": str(tenant_id)}
@@ -246,7 +185,6 @@ class RuleService:
         if not rule:
             return False
         
-        # Soft delete: just deactivate
         rule.is_active = False
         rule.updated_at = datetime.utcnow()
         
@@ -260,18 +198,7 @@ class RuleService:
         tenant_id: UUID,
         rule_id: UUID
     ) -> List[RuleVersion]:
-        """
-        Get all versions of a rule.
-        
-        Args:
-            db: Database session
-            tenant_id: Tenant UUID
-            rule_id: Rule UUID
-            
-        Returns:
-            List of RuleVersion objects
-        """
-        # Set tenant context for RLS
+        """Get all versions of a rule."""
         db.execute(
             text("SET app.current_tenant_id = :tenant_id"),
             {"tenant_id": str(tenant_id)}
@@ -283,19 +210,7 @@ class RuleService:
     
     @staticmethod
     def get_active_rules(db: Session, tenant_id: UUID) -> List[Rule]:
-        """
-        Get all active rules for fraud detection.
-        
-        This is the main function that Person B will use.
-        
-        Args:
-            db: Database session
-            tenant_id: Tenant UUID
-            
-        Returns:
-            List of active Rule objects
-        """
-        # Set tenant context for RLS
+        """Get all active rules for fraud detection."""
         db.execute(
             text("SET app.current_tenant_id = :tenant_id"),
             {"tenant_id": str(tenant_id)}
@@ -307,18 +222,71 @@ class RuleService:
         ).all()
     
     @staticmethod
-    def _create_rule_version(db: Session, rule: Rule, user_id: UUID) -> RuleVersion:
-        """
-        Create a new rule version for audit trail.
+    def bulk_create_rules(
+        db: Session,
+        tenant_id: UUID,
+        user_id: UUID,
+        rules_data: List[dict]
+    ) -> dict:
+        """Bulk create rules from JSON."""
+        db.execute(
+            text("SET app.current_tenant_id = :tenant_id"),
+            {"tenant_id": str(tenant_id)}
+        )
         
-        Args:
-            db: Database session
-            rule: Rule object
-            user_id: User UUID
-            
-        Returns:
-            Created RuleVersion object
-        """
+        loaded = 0
+        skipped = 0
+        errors = []
+        
+        for rule_data in rules_data:
+            try:
+                rule_code = rule_data.get("rule_code")
+                
+                # Check if exists
+                existing = db.query(Rule).filter(
+                    Rule.tenant_id == tenant_id,
+                    Rule.rule_code == rule_code
+                ).first()
+                
+                if existing:
+                    skipped += 1
+                    continue
+                
+                # Create rule
+                new_rule = Rule(
+                    tenant_id=tenant_id,
+                    created_by=user_id,
+                    name=rule_data.get("name"),
+                    description=rule_data.get("name"),
+                    rule_code=rule_code,
+                    category=rule_data.get("category"),
+                    severity=rule_data.get("severity"),
+                    recoupable=rule_data.get("recoupable", True),
+                    logic_type=rule_data.get("logic_type"),
+                    parameters=rule_data.get("parameters", {}),
+                    rule_definition=rule_data.get("parameters", {}),
+                    is_active=rule_data.get("enabled", True),
+                    version=1
+                )
+                
+                db.add(new_rule)
+                loaded += 1
+                
+            except Exception as e:
+                errors.append(f"{rule_code}: {str(e)}")
+        
+        db.commit()
+        
+        return {
+            "loaded": loaded,
+            "skipped": skipped,
+            "errors": errors,
+            "total": loaded + skipped
+        }
+    
+    @staticmethod
+    def _create_rule_version(db: Session, rule: Rule, user_id: UUID) -> RuleVersion:
+        """Create a new rule version for audit trail."""
         version = RuleVersion(
             rule_id=rule.id,
             version=rule.version,

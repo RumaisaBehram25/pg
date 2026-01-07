@@ -44,7 +44,7 @@ def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
     db = self.db
     
     print(f"\n{'='*80}")
-    print(f"STARTING CSV PROCESSING (INDEPENDENT MODE)")
+    print(f"STARTING CSV PROCESSING (CLIENT SCHEMA)")
     print(f"Job ID: {job_id}")
     print(f"Tenant ID: {tenant_id}")
     print(f"File: {file_path}")
@@ -149,21 +149,22 @@ def _read_csv_file(file_path: Path):
 
 
 def _validate_csv_structure(rows):
-    required_headers = {'claim_number', 'patient_id', 'drug_code', 'amount'}
+    required_headers = {'claim_id', 'patient_id', 'ndc', 'fill_date', 'days_supply', 'quantity'}
     headers = set(rows[0].keys()) if rows else set()
     
     missing_headers = required_headers - headers
     if missing_headers:
         raise ValueError(f"Missing required columns: {', '.join(sorted(missing_headers))}")
     
-    print(f" CSV headers valid\n")
+    print(f" CSV headers valid (client schema)\n")
+    print(f" Available columns: {', '.join(sorted(headers))}\n")
 
 
 def _process_rows(db, rows, job_id: str, tenant_id: str):
    
     validator = CSVValidator()
     
-    print(f" Processing rows (independent mode - no DB duplicate check)...\n")
+    print(f" Processing rows (client schema format)...\n")
     
     total_rows = 0
     success_count = 0
@@ -183,7 +184,7 @@ def _process_rows(db, rows, job_id: str, tenant_id: str):
                 _create_claim(db, row, job_id, tenant_id)
                 success_count += 1
                 
-                if success_count % 50 == 0:
+                if success_count % 100 == 0:
                     print(f"    Progress: {success_count} claims saved...")
         
         except Exception as e:
@@ -196,7 +197,7 @@ def _process_rows(db, rows, job_id: str, tenant_id: str):
             _log_error(db, job_id, tenant_id, error, row)
             print(f"    Row {row_number}: E999 - {e}")
         
-        if total_rows % 50 == 0:
+        if total_rows % 100 == 0:
             db.commit()
     
     print(f"\n Final commit...")
@@ -210,43 +211,135 @@ def _process_rows(db, rows, job_id: str, tenant_id: str):
     }
 
 
-def _create_claim(db, row: dict, job_id: str, tenant_id: str):
+def _parse_date(value: str):
+    if not value or not value.strip():
+        return None
+    value = value.strip()
+    for fmt in ['%Y-%m-%d', '%Y/%m/%d', '%m/%d/%Y', '%d/%m/%Y']:
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+    return None
 
-    prescription_date = None
-    if row.get('prescription_date', '').strip():
-        try:
-            prescription_date = datetime.strptime(
-                row['prescription_date'].strip(), 
-                '%Y-%m-%d'
-            ).date()
-        except ValueError:
-            pass
+
+def _parse_timestamp(value: str):
+    if not value or not value.strip():
+        return None
+    value = value.strip()
     
-    quantity = None
-    if row.get('quantity', '').strip():
-        try:
-            quantity = int(row['quantity'].strip())
-        except ValueError:
-            pass
+    formats = [
+        '%Y-%m-%dT%H:%M:%S.%fZ',
+        '%Y-%m-%dT%H:%M:%SZ',
+        '%Y-%m-%dT%H:%M:%S.%f',
+        '%Y-%m-%dT%H:%M:%S',
+        '%Y-%m-%d %H:%M:%S.%f',
+        '%Y-%m-%d %H:%M:%S',
+    ]
     
-    days_supply = None
-    if row.get('days_supply', '').strip():
+    for fmt in formats:
         try:
-            days_supply = int(row['days_supply'].strip())
+            return datetime.strptime(value, fmt)
         except ValueError:
-            pass
+            continue
+    return None
+
+
+def _parse_int(value: str):
+    if not value or not str(value).strip():
+        return None
+    try:
+        return int(float(str(value).strip()))
+    except (ValueError, TypeError):
+        return None
+
+
+def _parse_decimal(value: str):
+    if not value or not str(value).strip():
+        return None
+    try:
+        return float(str(value).strip())
+    except (ValueError, TypeError):
+        return None
+
+
+def _parse_bool(value: str):
+    if not value or not str(value).strip():
+        return False
+    val = str(value).strip().lower()
+    return val in ('true', '1', 'yes', 't', 'y')
+
+
+def _parse_string(value: str, max_length: int = None):
+    if not value:
+        return None
+    val = str(value).strip()
+    if not val:
+        return None
+    if max_length and len(val) > max_length:
+        val = val[:max_length]
+    return val
+
+
+def _create_claim(db, row: dict, job_id: str, tenant_id: str):
+    
+    claim_id = row['claim_id'].strip()
+    patient_id = row['patient_id'].strip()
+    ndc = row['ndc'].strip()
+    fill_date = _parse_date(row.get('fill_date'))
+    days_supply = _parse_int(row.get('days_supply'))
+    quantity = _parse_int(row.get('quantity'))
+    
+    copay_amount = _parse_decimal(row.get('copay_amount'))
+    plan_paid_amount = _parse_decimal(row.get('plan_paid_amount'))
+    ingredient_cost = _parse_decimal(row.get('ingredient_cost'))
+    
+    claim_status = _parse_string(row.get('claim_status'), 20)
+    if claim_status:
+        claim_status = claim_status.upper()
+    
+    paid_amount = None
+    if copay_amount is not None and plan_paid_amount is not None:
+        paid_amount = copay_amount + plan_paid_amount
+    
+    reversal_indicator = (claim_status == 'REVERSED') if claim_status else False
     
     claim = Claim(
         tenant_id=uuid.UUID(tenant_id),
         ingestion_id=uuid.UUID(job_id),
-        claim_number=row['claim_number'].strip(),
-        patient_id=row['patient_id'].strip(),
-        drug_code=row['drug_code'].strip(),
-        drug_name=row.get('drug_name', '').strip() or None,
-        amount=float(row['amount'].strip()),
-        quantity=quantity,
+        
+        claim_id=claim_id,
+        patient_id=patient_id,
+        rx_number=_parse_string(row.get('rx_number'), 50),
+        ndc=ndc,
+        drug_name=_parse_string(row.get('drug_name'), 255),
+        prescriber_npi=_parse_string(row.get('prescriber_npi'), 10),
+        pharmacy_npi=_parse_string(row.get('pharmacy_npi'), 10),
+        fill_date=fill_date,
         days_supply=days_supply,
-        prescription_date=prescription_date,
+        quantity=quantity,
+        copay_amount=copay_amount,
+        plan_paid_amount=plan_paid_amount,
+        ingredient_cost=ingredient_cost,
+        usual_and_customary=_parse_decimal(row.get('usual_and_customary')),
+        plan_id=_parse_string(row.get('plan_id'), 100),
+        state=_parse_string(row.get('state'), 2),
+        claim_status=claim_status or 'PAID',
+        submitted_at=_parse_timestamp(row.get('submitted_at')),
+        reversal_date=_parse_date(row.get('reversal_date')),
+        
+        amount=ingredient_cost,
+        prescription_date=fill_date,
+        paid_amount=paid_amount,
+        allowed_amount=None,
+        dispensing_fee=None,
+        pa_required=False,
+        pa_reference=None,
+        daw_code=None,
+        reversal_indicator=reversal_indicator,
+        reversal_reference=None,
+        generic_available=None,
+        drug_class=None,
     )
     
     db.add(claim)
@@ -276,6 +369,7 @@ def _finalize_job(db, job, result: dict):
         print(f"🔍 Fraud detection triggered for job {job.id}")
     except Exception as e:
         print(f"⚠️ Failed to trigger fraud detection: {e}")
+
 
 def _mark_job_failed(db, job_id: str):
     try:

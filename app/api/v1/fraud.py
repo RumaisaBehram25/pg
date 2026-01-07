@@ -1,4 +1,3 @@
-
 from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -27,11 +26,11 @@ router = APIRouter(prefix="/fraud", tags=["Fraud Detection"])
 
 @router.get("/flagged", response_model=FlaggedClaimListResponse)
 async def list_flagged_claims(
-    reviewed: Optional[bool] = Query(None, description="Filter by review status"),
-    rule_id: Optional[UUID] = Query(None, description="Filter by rule ID"),
-    job_id: Optional[UUID] = Query(None, description="Filter by ingestion job ID"),  # ✅ NEW!
+    reviewed: Optional[bool] = Query(None),
+    rule_id: Optional[UUID] = Query(None),
+    job_id: Optional[UUID] = Query(None),
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=100),
+    limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -58,41 +57,54 @@ async def list_flagged_claims(
         
         flagged_claims = query.order_by(desc(FlaggedClaim.flagged_at)).offset(skip).limit(limit).all()
         
-        total_reviewed = db.query(func.count(FlaggedClaim.id)).filter(
-            FlaggedClaim.tenant_id == current_user.tenant_id,
-            FlaggedClaim.reviewed == True
-        ).scalar()
+        base_count_query = db.query(FlaggedClaim).filter(
+            FlaggedClaim.tenant_id == current_user.tenant_id
+        )
         
-        total_unreviewed = db.query(func.count(FlaggedClaim.id)).filter(
-            FlaggedClaim.tenant_id == current_user.tenant_id,
-            FlaggedClaim.reviewed == False
-        ).scalar()
+        base_count_query = base_count_query.join(Claim, FlaggedClaim.claim_id == Claim.id)
         
+        if rule_id is not None:
+            base_count_query = base_count_query.filter(FlaggedClaim.rule_id == rule_id)
         
-        return {
-            "flagged_claims": [
-                {
-                    "id": str(fc.id),
-                    "tenant_id": str(fc.tenant_id),
-                    "claim_id": str(fc.claim_id),
-                    "rule_id": str(fc.rule_id),
-                    "rule_name": fc.rule.name,
-                    "rule_version": fc.rule_version,
-                    "claim_number": fc.claim.claim_number,
-                    "matched_conditions": fc.matched_conditions,
-                    "explanation": fc.explanation,
-                    "flagged_at": fc.flagged_at,
-                    "reviewed": fc.reviewed,
-                    "reviewed_by": str(fc.reviewed_by) if fc.reviewed_by else None,
-                    "reviewed_at": fc.reviewed_at,
-                    "reviewer_notes": fc.reviewer_notes
-                }
+        if job_id is not None:
+            base_count_query = base_count_query.filter(Claim.ingestion_id == job_id)
+        
+        total_reviewed = base_count_query.filter(FlaggedClaim.reviewed == True).count()
+        total_unreviewed = base_count_query.filter(FlaggedClaim.reviewed == False).count()
+        
+        def normalize_explanation(expl):
+            if expl is None:
+                return {"summary": "No explanation available"}
+            if isinstance(expl, str):
+                return {"summary": expl}
+            if isinstance(expl, dict):
+                return expl
+            return {"summary": str(expl)}
+        
+        return FlaggedClaimListResponse(
+            flagged_claims=[
+                FlaggedClaimResponse(
+                    id=fc.id,
+                    tenant_id=fc.tenant_id,
+                    claim_id=fc.claim_id,
+                    rule_id=fc.rule_id,
+                    rule_name=fc.rule.name,
+                    rule_version=fc.rule_version,
+                    claim_number=fc.claim.claim_number,
+                    matched_conditions=fc.matched_conditions,
+                    explanation=normalize_explanation(fc.explanation),
+                    flagged_at=fc.flagged_at,
+                    reviewed=fc.reviewed,
+                    reviewed_by=fc.reviewed_by,
+                    reviewed_at=fc.reviewed_at,
+                    reviewer_notes=fc.reviewer_notes
+                )
                 for fc in flagged_claims
             ],
-            "total": total,
-            "total_reviewed": total_reviewed,
-            "total_unreviewed": total_unreviewed
-        }
+            total=total,
+            total_reviewed=total_reviewed,
+            total_unreviewed=total_unreviewed
+        )
         
     except Exception as e:
         raise HTTPException(
@@ -120,6 +132,15 @@ async def get_flagged_claim(
     
     rule = db.query(Rule).filter(Rule.id == flagged_claim.rule_id).first()
     
+    def normalize_explanation(expl):
+        if expl is None:
+            return {"summary": "No explanation available"}
+        if isinstance(expl, str):
+            return {"summary": expl}
+        if isinstance(expl, dict):
+            return expl
+        return {"summary": str(expl)}
+    
     return {
         "id": str(flagged_claim.id),
         "tenant_id": str(flagged_claim.tenant_id),
@@ -129,7 +150,7 @@ async def get_flagged_claim(
         "rule_version": flagged_claim.rule_version,
         "claim_number": claim.claim_number,
         "matched_conditions": flagged_claim.matched_conditions,
-        "explanation": flagged_claim.explanation,
+        "explanation": normalize_explanation(flagged_claim.explanation),
         "flagged_at": flagged_claim.flagged_at,
         "reviewed": flagged_claim.reviewed,
         "reviewed_by": str(flagged_claim.reviewed_by) if flagged_claim.reviewed_by else None,
@@ -188,17 +209,18 @@ async def review_flagged_claim(
 
 @router.post("/detect", response_model=DetectionResultResponse)
 async def trigger_fraud_detection(
-    job_id: Optional[UUID] = Query(None, description="Specific job ID to process"),
+    job_id: Optional[UUID] = Query(None),
+    re_run: bool = Query(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-
     start_time = time.time()
     
     try:
         task = detect_fraud_for_job.delay(
             str(job_id) if job_id else None,
-            str(current_user.tenant_id)
+            str(current_user.tenant_id),
+            re_run=re_run
         )
         
         processing_time = time.time() - start_time
@@ -206,12 +228,16 @@ async def trigger_fraud_detection(
         if job_id:
             message = f"Fraud detection started for job {job_id}"
         else:
-            message = "Fraud detection started for all claims"
+            message = "Retrospective fraud detection started for all previously uploaded claims"
+            if re_run:
+                message += " (re-running all rules)"
         
         return {
             "status": "processing",
             "message": message,
             "job_id": str(job_id) if job_id else None,
+            "retrospective": job_id is None,
+            "re_run": re_run,
             "claims_evaluated": 0,  
             "rules_applied": 0,
             "flags_created": 0,
@@ -227,7 +253,7 @@ async def trigger_fraud_detection(
 
 @router.get("/stats", response_model=DetectionStatsResponse)
 async def get_fraud_stats(
-    job_id: Optional[UUID] = Query(None, description="Filter stats by job ID"),  # ✅ NEW!
+    job_id: Optional[UUID] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -281,6 +307,15 @@ async def get_fraud_stats(
         
         recent_flags = recent_flags_query.all()
         
+        def normalize_explanation(expl):
+            if expl is None:
+                return {"summary": "No explanation available"}
+            if isinstance(expl, str):
+                return {"summary": expl}
+            if isinstance(expl, dict):
+                return expl
+            return {"summary": str(expl)}
+        
         return {
             "total_flagged_claims": total_flagged_claims,
             "total_reviewed": total_reviewed,
@@ -299,7 +334,7 @@ async def get_fraud_stats(
                     "rule_version": fc.rule_version,
                     "claim_number": fc.claim.claim_number,
                     "matched_conditions": fc.matched_conditions,
-                    "explanation": fc.explanation,
+                    "explanation": normalize_explanation(fc.explanation),
                     "flagged_at": fc.flagged_at,
                     "reviewed": fc.reviewed,
                     "reviewed_by": str(fc.reviewed_by) if fc.reviewed_by else None,

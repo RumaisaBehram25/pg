@@ -1,13 +1,11 @@
-"""
-Complete updated app/api/v1/claims.py with pagination fix
-"""
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, delete
 from typing import List, Optional
 from datetime import date
 import hashlib
 from pathlib import Path
+import logging
 
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -17,6 +15,7 @@ from app.schemas import job as job_schemas
 from app.workers.celery_tasks import process_csv_task
 from pydantic import BaseModel
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -177,7 +176,6 @@ async def get_job_errors(
     }
 
 
-# Schemas defined here (keep these)
 class ClaimResponse(BaseModel):
     id: str
     claim_number: str
@@ -198,47 +196,28 @@ class ClaimResponse(BaseModel):
 class JobClaimsResponse(BaseModel):
     job_id: str
     total_claims: int
-    returned_claims: int      # NEW: Claims in this response
-    skip: int                  # NEW: Pagination offset
-    limit: int                 # NEW: Page size
-    has_more: bool            # NEW: More pages available?
-    current_page: int         # NEW: Current page number
-    total_pages: int          # NEW: Total pages
+    returned_claims: int
+    skip: int
+    limit: int
+    has_more: bool
+    current_page: int
+    total_pages: int
     claims: List[ClaimResponse]
 
 
-# ✅ UPDATED ENDPOINT WITH PAGINATION
 @router.get("/jobs/{job_id}/claims", response_model=JobClaimsResponse)
 async def get_job_claims(
     job_id: str,
-    skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(100, ge=1, le=1000, description="Maximum records to return (1-1000)"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    Get claims from a specific ingestion job with PAGINATION.
-    
-    For large files (5000+ claims), use pagination:
-    - First page: skip=0, limit=100
-    - Second page: skip=100, limit=100
-    - Third page: skip=200, limit=100
-    
-    Args:
-        job_id: UUID of the ingestion job
-        skip: Number of records to skip (default: 0)
-        limit: Maximum records to return (default: 100, max: 1000)
-    
-    Returns:
-        Paginated list of claims with metadata
-    """
-    # Set tenant context for RLS
     db.execute(
         text("SET app.current_tenant_id = :tenant_id"),
         {"tenant_id": str(current_user.tenant_id)}
     )
     
-    # Verify job exists
     job = db.query(models.IngestionJob).filter(
         models.IngestionJob.id == job_id,
         models.IngestionJob.tenant_id == current_user.tenant_id
@@ -250,13 +229,11 @@ async def get_job_claims(
             detail=f"Job {job_id} not found"
         )
     
-    # Get TOTAL count (for pagination metadata)
     total_claims = db.query(models.Claim).filter(
         models.Claim.ingestion_id == job_id,
         models.Claim.tenant_id == current_user.tenant_id
     ).count()
     
-    # Get PAGINATED claims (only requested page)
     claims = db.query(models.Claim)\
         .filter(
             models.Claim.ingestion_id == job_id,
@@ -267,7 +244,6 @@ async def get_job_claims(
         .limit(limit)\
         .all()
     
-    # Calculate pagination metadata
     returned_claims = len(claims)
     has_more = (skip + limit) < total_claims
     current_page = (skip // limit) + 1 if limit > 0 else 1
@@ -299,3 +275,146 @@ async def get_job_claims(
             for claim in claims
         ]
     )
+
+
+class DeleteJobResponse(BaseModel):
+    job_id: str
+    message: str
+    claims_deleted: int
+    flags_deleted: int
+    errors_deleted: int
+
+
+@router.delete("/jobs/{job_id}", response_model=DeleteJobResponse)
+async def delete_job_data(
+    job_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    db.execute(
+        text("SET app.current_tenant_id = :tenant_id"),
+        {"tenant_id": str(current_user.tenant_id)}
+    )
+    
+    job = db.query(models.IngestionJob).filter(
+        models.IngestionJob.id == job_id,
+        models.IngestionJob.tenant_id == current_user.tenant_id
+    ).first()
+    
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job {job_id} not found"
+        )
+    
+    try:
+        claim_ids = db.query(models.Claim.id).filter(
+            models.Claim.ingestion_id == job_id,
+            models.Claim.tenant_id == current_user.tenant_id
+        ).all()
+        claim_id_list = [str(c.id) for c in claim_ids]
+        
+        flags_deleted = 0
+        if claim_id_list:
+            flags_deleted = db.query(models.FlaggedClaim).filter(
+                models.FlaggedClaim.claim_id.in_(claim_id_list),
+                models.FlaggedClaim.tenant_id == current_user.tenant_id
+            ).delete(synchronize_session=False)
+        
+        claims_deleted = db.query(models.Claim).filter(
+            models.Claim.ingestion_id == job_id,
+            models.Claim.tenant_id == current_user.tenant_id
+        ).delete(synchronize_session=False)
+        
+        errors_deleted = db.query(models.IngestionError).filter(
+            models.IngestionError.ingestion_id == job_id
+        ).delete(synchronize_session=False)
+        
+        db.delete(job)
+        
+        db.commit()
+        
+        logger.info(f"Deleted job {job_id}: {claims_deleted} claims, {flags_deleted} flags, {errors_deleted} errors")
+        
+        return DeleteJobResponse(
+            job_id=job_id,
+            message=f"Successfully deleted job and all associated data",
+            claims_deleted=claims_deleted,
+            flags_deleted=flags_deleted,
+            errors_deleted=errors_deleted
+        )
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting job {job_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting job data: {str(e)}"
+        )
+
+
+class DeleteAllClaimsResponse(BaseModel):
+    message: str
+    claims_deleted: int
+    flags_deleted: int
+    jobs_deleted: int
+
+
+@router.delete("/all", response_model=DeleteAllClaimsResponse)
+async def delete_all_tenant_claims(
+    confirm: bool = Query(False),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not confirm:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Set confirm=true to delete all data. This action cannot be undone!"
+        )
+    
+    db.execute(
+        text("SET app.current_tenant_id = :tenant_id"),
+        {"tenant_id": str(current_user.tenant_id)}
+    )
+    
+    try:
+        flags_deleted = db.query(models.FlaggedClaim).filter(
+            models.FlaggedClaim.tenant_id == current_user.tenant_id
+        ).delete(synchronize_session=False)
+        
+        claims_deleted = db.query(models.Claim).filter(
+            models.Claim.tenant_id == current_user.tenant_id
+        ).delete(synchronize_session=False)
+        
+        job_ids = db.query(models.IngestionJob.id).filter(
+            models.IngestionJob.tenant_id == current_user.tenant_id
+        ).all()
+        job_id_list = [str(j.id) for j in job_ids]
+        
+        if job_id_list:
+            db.query(models.IngestionError).filter(
+                models.IngestionError.ingestion_id.in_(job_id_list)
+            ).delete(synchronize_session=False)
+        
+        jobs_deleted = db.query(models.IngestionJob).filter(
+            models.IngestionJob.tenant_id == current_user.tenant_id
+        ).delete(synchronize_session=False)
+        
+        db.commit()
+        
+        logger.info(f"Deleted all data for tenant {current_user.tenant_id}: {claims_deleted} claims, {flags_deleted} flags, {jobs_deleted} jobs")
+        
+        return DeleteAllClaimsResponse(
+            message="Successfully deleted all tenant data",
+            claims_deleted=claims_deleted,
+            flags_deleted=flags_deleted,
+            jobs_deleted=jobs_deleted
+        )
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting tenant data: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting data: {str(e)}"
+        )

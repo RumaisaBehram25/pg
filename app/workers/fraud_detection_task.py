@@ -1,65 +1,107 @@
-
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 import uuid
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from app.core.celery_config import celery_app
 from app.core.database import SessionLocal
 from app.models.claim import Claim, Rule, FlaggedClaim
+from app.models.audit_run import AuditRuleRun
 from app.services.rule_service import RuleService
-from app.services.fraud_engine import fraud_engine
+from app.services.fraud_engine import FraudDetectionEngine
 
 
 @celery_app.task(name="detect_fraud_for_job")
-def detect_fraud_for_job(job_id: str, tenant_id: str):
-
+def detect_fraud_for_job(job_id: Optional[str], tenant_id: str, re_run: bool = False):
     db = SessionLocal()
+    audit_run = None
     
     try:
-        print(f"🔍 Starting fraud detection for job: {job_id}")
+        if job_id:
+            print(f"🔍 Starting fraud detection for job: {job_id}")
+        else:
+            print(f"🔍 Starting retrospective fraud detection for all claims (tenant: {tenant_id})")
         
         db.execute(
             text("SET app.current_tenant_id = :tenant_id"),
             {"tenant_id": tenant_id}
         )
         
-        claims = db.query(Claim).filter(
-            Claim.ingestion_id == job_id,
-            Claim.tenant_id == uuid.UUID(tenant_id)
-        ).all()
+        audit_run = AuditRuleRun(
+            tenant_id=uuid.UUID(tenant_id),
+            job_id=uuid.UUID(job_id) if job_id else None,
+            run_date=datetime.utcnow(),
+            status="processing"
+        )
+        db.add(audit_run)
+        db.commit()
+        db.refresh(audit_run)
+        
+        query = db.query(Claim).filter(Claim.tenant_id == uuid.UUID(tenant_id))
+        if job_id:
+            query = query.filter(Claim.ingestion_id == uuid.UUID(job_id))
+        
+        claims = query.all()
         
         if not claims:
-            print(f"⚠️  No claims found for job {job_id}")
+            audit_run.status = "completed"
+            audit_run.completed_at = datetime.utcnow()
+            db.commit()
+            print(f"⚠️  No claims found")
             return {
                 "status": "no_claims",
-                "message": "No claims to evaluate"
+                "message": "No claims to evaluate",
+                "run_id": str(audit_run.id)
             }
         
-        print(f" Found {len(claims)} claims to evaluate")
+        print(f"✅ Found {len(claims)} claims to evaluate")
         
         active_rules = RuleService.get_active_rules(db, uuid.UUID(tenant_id))
         
         if not active_rules:
-            print(f" No active rules for tenant {tenant_id}")
+            audit_run.status = "completed"
+            audit_run.completed_at = datetime.utcnow()
+            db.commit()
+            print(f"⚠️  No active rules for tenant {tenant_id}")
             return {
                 "status": "no_rules",
-                "message": "No active rules to apply"
+                "message": "No active rules to apply",
+                "run_id": str(audit_run.id)
             }
         
-        print(f" Found {len(active_rules)} active rules")
+        print(f"✅ Found {len(active_rules)} active rules")
+        
+        fraud_engine = FraudDetectionEngine(db, tenant_id)
         
         flags_created = 0
         
         for claim in claims:
             for rule in active_rules:
-                matched, explanation = fraud_engine.evaluate_claim(claim, rule)
+                if not re_run:
+                    existing_flag = db.query(FlaggedClaim).filter(
+                        FlaggedClaim.claim_id == claim.id,
+                        FlaggedClaim.rule_id == rule.id
+                    ).first()
+                    
+                    if existing_flag:
+                        continue
                 
-                if matched:
-                    _create_flagged_claim(db, claim, rule, explanation, tenant_id)
+                result = fraud_engine.evaluate_claim(claim, rule)
+                
+                if result.get("matched", False):
+                    _create_flagged_claim(
+                        db, claim, rule, result, 
+                        tenant_id, str(audit_run.id)
+                    )
                     flags_created += 1
-                    print(f" Flagged: {claim.claim_number} by rule '{rule.name}'")
+                    print(f"🚩 Flagged: {claim.claim_number} by rule '{rule.name}'")
+        
+        audit_run.status = "completed"
+        audit_run.completed_at = datetime.utcnow()
+        audit_run.rules_executed = len(active_rules)
+        audit_run.claims_processed = len(claims)
+        audit_run.flags_generated = flags_created
         
         db.commit()
         
@@ -67,6 +109,7 @@ def detect_fraud_for_job(job_id: str, tenant_id: str):
         
         return {
             "status": "completed",
+            "run_id": str(audit_run.id),
             "claims_evaluated": len(claims),
             "rules_applied": len(active_rules),
             "flags_created": flags_created
@@ -74,86 +117,16 @@ def detect_fraud_for_job(job_id: str, tenant_id: str):
     
     except Exception as e:
         db.rollback()
-        print(f" Fraud detection failed: {str(e)}")
+        if audit_run:
+            audit_run.status = "failed"
+            audit_run.error_message = str(e)
+            audit_run.completed_at = datetime.utcnow()
+            db.commit()
+        print(f"❌ Fraud detection failed: {str(e)}")
         return {
             "status": "failed",
-            "error": str(e)
-        }
-    
-    finally:
-        db.close()
-
-
-@celery_app.task(name="detect_fraud_all_claims")
-def detect_fraud_all_claims(tenant_id: str):
-
-    db = SessionLocal()
-    
-    try:
-        print(f" Starting fraud detection for all claims (tenant: {tenant_id})")
-        
-        db.execute(
-            text("SET app.current_tenant_id = :tenant_id"),
-            {"tenant_id": tenant_id}
-        )
-        
-        claims = db.query(Claim).filter(
-            Claim.tenant_id == uuid.UUID(tenant_id)
-        ).all()
-        
-        if not claims:
-            return {
-                "status": "no_claims",
-                "message": "No claims to evaluate"
-            }
-        
-        print(f" Found {len(claims)} total claims")
-        
-        active_rules = RuleService.get_active_rules(db, uuid.UUID(tenant_id))
-        
-        if not active_rules:
-            return {
-                "status": "no_rules",
-                "message": "No active rules to apply"
-            }
-        
-        print(f" Found {len(active_rules)} active rules")
-
-        flags_created = 0
-        
-        for claim in claims:
-            for rule in active_rules:
-                existing_flag = db.query(FlaggedClaim).filter(
-                    FlaggedClaim.claim_id == claim.id,
-                    FlaggedClaim.rule_id == rule.id
-                ).first()
-                
-                if existing_flag:
-                    continue  
-                
-                matched, explanation = fraud_engine.evaluate_claim(claim, rule)
-                
-                if matched:
-                    _create_flagged_claim(db, claim, rule, explanation, tenant_id)
-                    flags_created += 1
-        
-        db.commit()
-        
-        print(f" Fraud detection complete: {flags_created} new flags created")
-        
-        return {
-            "status": "completed",
-            "claims_evaluated": len(claims),
-            "rules_applied": len(active_rules),
-            "flags_created": flags_created
-        }
-    
-    except Exception as e:
-        db.rollback()
-        print(f" Fraud detection failed: {str(e)}")
-        return {
-            "status": "failed",
-            "error": str(e)
+            "error": str(e),
+            "run_id": str(audit_run.id) if audit_run else None
         }
     
     finally:
@@ -165,16 +138,35 @@ def _create_flagged_claim(
     claim: Claim,
     rule: Rule,
     explanation: dict,
-    tenant_id: str
+    tenant_id: str,
+    run_id: Optional[str] = None
 ):
-
+    
+    explanation_dict = explanation.get("explanation", {})
+    if isinstance(explanation_dict, str):
+        explanation_dict = {"summary": explanation_dict}
+    elif not explanation_dict:
+        explanation_dict = {"summary": f"Rule '{rule.name}' flagged this claim"}
+    
+    evidence_json = {
+        "rule_name": rule.name,
+        "rule_code": rule.rule_code,
+        "logic_type": rule.logic_type,
+        **{k: v for k, v in explanation.items() if k not in ["explanation", "matched"]}
+    }
+    
     flagged_claim = FlaggedClaim(
         tenant_id=uuid.UUID(tenant_id),
         claim_id=claim.id,
         rule_id=rule.id,
         rule_version=rule.version,
+        run_id=uuid.UUID(run_id) if run_id else None,
+        rule_code=rule.rule_code,
+        severity=rule.severity,
+        category=rule.category,
         matched_conditions={"conditions": explanation.get("matched_conditions", [])},
-        explanation=explanation,
+        explanation=explanation_dict,
+        evidence_json=evidence_json,
         flagged_at=datetime.utcnow(),
         reviewed=False
     )

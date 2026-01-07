@@ -1,4 +1,3 @@
-
 from datetime import datetime, date
 from typing import Dict, Optional, List, Set
 from dataclasses import dataclass
@@ -14,71 +13,89 @@ class ValidationError:
 
 
 class CSVValidator:
-
-    MAX_AMOUNT = 10000.00
-    MIN_AMOUNT = 0.01
+    
+    MAX_AMOUNT = 100000.00
+    MIN_AMOUNT = 0.00
     MAX_DAYS_SUPPLY = 365
     MIN_DAYS_SUPPLY = 1
-    MAX_QUANTITY = 9999
+    MAX_QUANTITY = 99999
     MIN_QUANTITY = 1
     
     MAX_FIELD_LENGTH = {
-        'claim_number': 100,
+        'claim_id': 100,
         'patient_id': 100,
-        'drug_code': 50,
+        'ndc': 50,
         'drug_name': 255,
+        'rx_number': 50,
+        'prescriber_npi': 10,
+        'pharmacy_npi': 10,
+        'plan_id': 100,
+        'state': 2,
     }
     
-    REQUIRED_FIELDS = ['claim_number', 'patient_id', 'drug_code', 'amount']
+    REQUIRED_FIELDS = ['claim_id', 'patient_id', 'ndc', 'fill_date', 'days_supply', 'quantity']
+    
+    VALID_CLAIM_STATUSES = {'PAID', 'REVERSED'}
+    
+    VALID_STATES = {
+        'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+        'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+        'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+        'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+        'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+        'DC', 'PR', 'VI', 'GU', 'AS', 'MP'
+    }
     
     def __init__(self):
-        self.seen_claim_numbers: Set[str] = set()
+        self.seen_claim_ids: Set[str] = set()
         self.errors: List[ValidationError] = []
     
     def validate_row(self, row: Dict[str, str], row_number: int) -> Optional[ValidationError]:
-
         
-        # E001: Required fields validation
         error = self._validate_required_fields(row, row_number)
         if error:
             return error
         
-        # E010: Field length validation
         error = self._validate_field_lengths(row, row_number)
         if error:
             return error
         
-        # E002: Duplicate detection (WITHIN THIS FILE ONLY)
         error = self._validate_duplicate_claim(row, row_number)
         if error:
             return error
         
-        # E003, E004, E005: Amount validation
-        error = self._validate_amount(row, row_number)
-        if error:
-            return error
-        
-        # E011: Drug code format validation
-        error = self._validate_drug_code(row, row_number)
-        if error:
-            return error
-        
-        # E007: Quantity validation
         error = self._validate_quantity(row, row_number)
         if error:
             return error
         
-        # E008: Days supply validation
         error = self._validate_days_supply(row, row_number)
         if error:
             return error
         
-        # E009, E012: Date validation
-        error = self._validate_prescription_date(row, row_number)
+        error = self._validate_fill_date(row, row_number)
         if error:
             return error
         
-        # All validations passed
+        error = self._validate_ndc(row, row_number)
+        if error:
+            return error
+        
+        error = self._validate_npi_fields(row, row_number)
+        if error:
+            return error
+        
+        error = self._validate_claim_status(row, row_number)
+        if error:
+            return error
+        
+        error = self._validate_state(row, row_number)
+        if error:
+            return error
+        
+        error = self._validate_amounts(row, row_number)
+        if error:
+            return error
+        
         return None
     
     def _validate_required_fields(self, row: Dict[str, str], row_number: int) -> Optional[ValidationError]:
@@ -94,80 +111,45 @@ class CSVValidator:
         return None
     
     def _validate_duplicate_claim(self, row: Dict[str, str], row_number: int) -> Optional[ValidationError]:
-        claim_number = row.get('claim_number', '').strip()
+        claim_id = row.get('claim_id', '').strip()
         
-        if claim_number in self.seen_claim_numbers:
+        if claim_id in self.seen_claim_ids:
             return ValidationError(
                 row_number=row_number,
                 error_code="E002",
-                error_message=f"Duplicate claim_number in this file: {claim_number}",
-                field_name='claim_number'
+                error_message=f"Duplicate claim_id in this file: {claim_id}",
+                field_name='claim_id'
             )
         
-        self.seen_claim_numbers.add(claim_number)
+        self.seen_claim_ids.add(claim_id)
         return None
     
-    def _validate_amount(self, row: Dict[str, str], row_number: int) -> Optional[ValidationError]:
-        amount_str = row.get('amount', '').strip()
+    def _validate_ndc(self, row: Dict[str, str], row_number: int) -> Optional[ValidationError]:
+        ndc = row.get('ndc', '').strip()
         
-        # E003: Check format
-        try:
-            amount = float(amount_str)
-        except (ValueError, TypeError):
-            return ValidationError(
-                row_number=row_number,
-                error_code="E003",
-                error_message=f"Invalid amount format: '{amount_str}' (must be a valid number)",
-                field_name='amount'
-            )
-        
-        # E004: Check if positive
-        if amount <= 0:
-            return ValidationError(
-                row_number=row_number,
-                error_code="E004",
-                error_message=f"Amount must be greater than zero: ${amount:.2f}",
-                field_name='amount'
-            )
-        
-        # E005: Check if suspiciously high
-        if amount > self.MAX_AMOUNT:
-            return ValidationError(
-                row_number=row_number,
-                error_code="E005",
-                error_message=f"Amount suspiciously high: ${amount:.2f} (maximum: ${self.MAX_AMOUNT:.2f})",
-                field_name='amount'
-            )
-        
-        return None
-    
-    def _validate_drug_code(self, row: Dict[str, str], row_number: int) -> Optional[ValidationError]:
-        """Validate drug code format."""
-        drug_code = row.get('drug_code', '').strip()
-        
-        if not drug_code:
+        if not ndc:
             return None
         
-        # Only alphanumeric and hyphens allowed
-        if not re.match(r'^[A-Za-z0-9\-]+$', drug_code):
+        ndc_pattern = r'^(\d{4,5}-\d{3,4}-\d{1,2}|\d{10,11})$'
+        
+        if not re.match(ndc_pattern, ndc):
             return ValidationError(
                 row_number=row_number,
                 error_code="E011",
-                error_message=f"Invalid drug code format: '{drug_code}' (only letters, numbers, and hyphens allowed)",
-                field_name='drug_code'
+                error_message=f"Invalid NDC format: '{ndc}' (expected format: XXXXX-XXXX-XX or 11 digits)",
+                field_name='ndc'
             )
         
         return None
     
     def _validate_quantity(self, row: Dict[str, str], row_number: int) -> Optional[ValidationError]:
-        """Validate quantity field (optional)."""
         quantity_str = row.get('quantity', '').strip()
         
         if not quantity_str:
             return None
         
         try:
-            quantity = int(quantity_str)
+            quantity = int(float(quantity_str))
             
             if quantity < self.MIN_QUANTITY:
                 return ValidationError(
@@ -202,7 +184,7 @@ class CSVValidator:
             return None
         
         try:
-            days_supply = int(days_str)
+            days_supply = int(float(days_str))
             
             if days_supply < self.MIN_DAYS_SUPPLY:
                 return ValidationError(
@@ -230,31 +212,93 @@ class CSVValidator:
         
         return None
     
-    def _validate_prescription_date(self, row: Dict[str, str], row_number: int) -> Optional[ValidationError]:
-        date_str = row.get('prescription_date', '').strip()
+    def _validate_fill_date(self, row: Dict[str, str], row_number: int) -> Optional[ValidationError]:
+        date_str = row.get('fill_date', '').strip()
         
         if not date_str:
             return None
         
-        # E009: Validate date format
-        try:
-            prescription_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-        except ValueError:
+        parsed_date = None
+        for fmt in ['%Y-%m-%d', '%Y/%m/%d', '%m/%d/%Y', '%d/%m/%Y']:
+            try:
+                parsed_date = datetime.strptime(date_str, fmt).date()
+                break
+            except ValueError:
+                continue
+        
+        if parsed_date is None:
             return ValidationError(
                 row_number=row_number,
                 error_code="E009",
-                error_message=f"Invalid date format: '{date_str}' (use YYYY-MM-DD, e.g., 2024-12-25)",
-                field_name='prescription_date'
+                error_message=f"Invalid date format: '{date_str}' (use YYYY-MM-DD, e.g., 2025-12-25)",
+                field_name='fill_date'
             )
         
-        # E012: Check if future date
-        if prescription_date > date.today():
+        return None
+    
+    def _validate_npi_fields(self, row: Dict[str, str], row_number: int) -> Optional[ValidationError]:
+        return None
+    
+    def _validate_claim_status(self, row: Dict[str, str], row_number: int) -> Optional[ValidationError]:
+        status = row.get('claim_status', '').strip().upper()
+        
+        if not status:
+            return None
+        
+        if status not in self.VALID_CLAIM_STATUSES:
             return ValidationError(
                 row_number=row_number,
-                error_code="E012",
-                error_message=f"Prescription date cannot be in the future: {date_str}",
-                field_name='prescription_date'
+                error_code="E014",
+                error_message=f"Invalid claim_status: '{status}' (must be PAID or REVERSED)",
+                field_name='claim_status'
             )
+        
+        return None
+    
+    def _validate_state(self, row: Dict[str, str], row_number: int) -> Optional[ValidationError]:
+        state = row.get('state', '').strip().upper()
+        
+        if not state:
+            return None
+        
+        if state not in self.VALID_STATES:
+            return ValidationError(
+                row_number=row_number,
+                error_code="E015",
+                error_message=f"Invalid state code: '{state}' (must be valid US state)",
+                field_name='state'
+            )
+        
+        return None
+    
+    def _validate_amounts(self, row: Dict[str, str], row_number: int) -> Optional[ValidationError]:
+        
+        amount_fields = ['copay_amount', 'plan_paid_amount', 'ingredient_cost', 'usual_and_customary']
+        
+        for field in amount_fields:
+            amount_str = row.get(field, '').strip()
+            
+            if not amount_str:
+                continue
+            
+            try:
+                amount = float(amount_str)
+                
+                if amount > self.MAX_AMOUNT:
+                    return ValidationError(
+                        row_number=row_number,
+                        error_code="E016",
+                        error_message=f"Amount too high for {field}: ${amount:.2f} (maximum: ${self.MAX_AMOUNT:.2f})",
+                        field_name=field
+                    )
+                
+            except (ValueError, TypeError):
+                return ValidationError(
+                    row_number=row_number,
+                    error_code="E016",
+                    error_message=f"Invalid {field} format: '{amount_str}' (must be a valid number)",
+                    field_name=field
+                )
         
         return None
     
@@ -273,8 +317,5 @@ class CSVValidator:
         return None
     
     def reset(self):
-        self.seen_claim_numbers.clear()
+        self.seen_claim_ids.clear()
         self.errors.clear()
-
-
-
