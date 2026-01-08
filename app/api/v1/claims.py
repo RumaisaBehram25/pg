@@ -105,7 +105,11 @@ async def get_job_status(
         "success_count": job.successful_rows,
         "error_count": job.failed_rows,
         "started_at": job.started_at,
-        "completed_at": job.completed_at
+        "completed_at": job.completed_at,
+        "fraud_status": job.fraud_status or "pending",
+        "fraud_flags_count": job.fraud_flags_count or 0,
+        "fraud_started_at": job.fraud_started_at,
+        "fraud_completed_at": job.fraud_completed_at
     }
 
 
@@ -130,7 +134,9 @@ async def list_jobs(
                 "success_count": job.successful_rows,
                 "error_count": job.failed_rows,
                 "created_at": job.created_at,
-                "completed_at": job.completed_at
+                "completed_at": job.completed_at,
+                "fraud_status": job.fraud_status or "pending",
+                "fraud_flags_count": job.fraud_flags_count or 0
             }
             for job in jobs
         ]

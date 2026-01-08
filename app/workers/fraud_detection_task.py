@@ -6,10 +6,24 @@ from typing import List, Optional
 
 from app.core.celery_config import celery_app
 from app.core.database import SessionLocal
-from app.models.claim import Claim, Rule, FlaggedClaim
+from app.models.claim import Claim, Rule, FlaggedClaim, IngestionJob
 from app.models.audit_run import AuditRuleRun
 from app.services.rule_service import RuleService
 from app.services.fraud_engine import FraudDetectionEngine
+
+
+def _update_job_fraud_status(db: Session, job_id: str, status: str, flags_count: int = 0, start: bool = False, end: bool = False):
+    if not job_id:
+        return
+    job = db.query(IngestionJob).filter(IngestionJob.id == uuid.UUID(job_id)).first()
+    if job:
+        job.fraud_status = status
+        job.fraud_flags_count = flags_count
+        if start:
+            job.fraud_started_at = datetime.utcnow()
+        if end:
+            job.fraud_completed_at = datetime.utcnow()
+        db.commit()
 
 
 @celery_app.task(name="detect_fraud_for_job")
@@ -27,6 +41,8 @@ def detect_fraud_for_job(job_id: Optional[str], tenant_id: str, re_run: bool = F
             text("SET app.current_tenant_id = :tenant_id"),
             {"tenant_id": tenant_id}
         )
+        
+        _update_job_fraud_status(db, job_id, "processing", start=True)
         
         audit_run = AuditRuleRun(
             tenant_id=uuid.UUID(tenant_id),
@@ -48,6 +64,7 @@ def detect_fraud_for_job(job_id: Optional[str], tenant_id: str, re_run: bool = F
             audit_run.status = "completed"
             audit_run.completed_at = datetime.utcnow()
             db.commit()
+            _update_job_fraud_status(db, job_id, "completed", flags_count=0, end=True)
             print(f"⚠️  No claims found")
             return {
                 "status": "no_claims",
@@ -63,6 +80,7 @@ def detect_fraud_for_job(job_id: Optional[str], tenant_id: str, re_run: bool = F
             audit_run.status = "completed"
             audit_run.completed_at = datetime.utcnow()
             db.commit()
+            _update_job_fraud_status(db, job_id, "completed", flags_count=0, end=True)
             print(f"⚠️  No active rules for tenant {tenant_id}")
             return {
                 "status": "no_rules",
@@ -105,6 +123,8 @@ def detect_fraud_for_job(job_id: Optional[str], tenant_id: str, re_run: bool = F
         
         db.commit()
         
+        _update_job_fraud_status(db, job_id, "completed", flags_count=flags_created, end=True)
+        
         print(f"✅ Fraud detection complete: {flags_created} claims flagged")
         
         return {
@@ -122,6 +142,7 @@ def detect_fraud_for_job(job_id: Optional[str], tenant_id: str, re_run: bool = F
             audit_run.error_message = str(e)
             audit_run.completed_at = datetime.utcnow()
             db.commit()
+        _update_job_fraud_status(db, job_id, "failed", end=True)
         print(f"❌ Fraud detection failed: {str(e)}")
         return {
             "status": "failed",

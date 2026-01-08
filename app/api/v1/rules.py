@@ -224,7 +224,10 @@ async def bulk_upload_rules(
     content = await file.read()
     data = json.loads(content)
     
-    rules_data = data.get("rules", [])
+    if isinstance(data, list):
+        rules_data = data
+    else:
+        rules_data = data.get("rules", [])
     
     result = RuleService.bulk_create_rules(
         db=db,

@@ -1,3 +1,6 @@
+"""
+Fraud Detection Engine - Core logic for evaluating claims against rules
+"""
 from sqlalchemy.orm import Session
 from sqlalchemy import text, and_, or_
 from datetime import datetime, timedelta
@@ -349,13 +352,12 @@ class FraudDetectionEngine:
             }
         
         start_date = claim_date - timedelta(days=window_days)
-        end_date = claim_date + timedelta(days=window_days)
         
         filters = [
             Claim.tenant_id == self.tenant_id,
             Claim.id != claim.id,
-            getattr(Claim, mapped_date_field) >= start_date,
-            getattr(Claim, mapped_date_field) <= end_date
+            getattr(Claim, mapped_date_field) > start_date,
+            getattr(Claim, mapped_date_field) < claim_date
         ]
         
         valid_key_count = 0
@@ -648,6 +650,7 @@ class FraudDetectionEngine:
             }
         }
     
+    
     def _evaluate_ratio_range(self, claim: Claim, rule: Rule) -> Dict[str, Any]:
         params = rule.parameters or {}
         numerator = params.get("numerator", "quantity")
@@ -773,17 +776,20 @@ class FraudDetectionEngine:
         params = rule.parameters or {}
         field = params.get("field", "prescriber_npi")
         pattern = params.get("pattern", "^[0-9]{10}$")
-        null_is_fail = params.get("null_is_fail", True)
+        null_is_fail = params.get("null_is_fail", False)
+        match_means_valid = params.get("match_means_valid", False)
+        case_insensitive = params.get("case_insensitive", False)
         
         field_value = self._get_field_value(claim, field)
         
-        if field_value is None:
+        # Handle null/empty values
+        if field_value is None or str(field_value).strip() == "":
             matched = null_is_fail
             return {
                 "matched": matched,
-                "reason": f"{field} is null",
+                "reason": f"{field} is null/empty",
                 "explanation": {
-                    "summary": f"{field} is null, null_is_fail={null_is_fail}",
+                    "summary": f"{field} is null/empty, null_is_fail={null_is_fail}",
                     "rule_name": rule.name,
                     "field": field,
                     "field_value": None,
@@ -793,18 +799,33 @@ class FraudDetectionEngine:
                 }
             }
         
-        matched = not bool(re.match(pattern, str(field_value)))
+        # Check pattern match
+        flags = re.IGNORECASE if case_insensitive else 0
+        regex_match = re.search(pattern, str(field_value), flags)
+        pattern_matched = bool(regex_match)
+        
+        # Determine if claim should be flagged
+        if match_means_valid:
+            # Validation mode: flag when pattern DOESN'T match (invalid format)
+            matched = not pattern_matched
+        else:
+            # Monitoring mode: flag when pattern MATCHES (suspicious content)
+            matched = pattern_matched
         
         return {
             "matched": matched,
             "field_value": str(field_value),
             "pattern": pattern,
+            "pattern_matched": pattern_matched,
+            "match_means_valid": match_means_valid,
             "explanation": {
-                "summary": f"{field} '{field_value}' {'does not match' if matched else 'matches'} pattern {pattern}",
+                "summary": f"{field} '{field_value}' {'matches' if pattern_matched else 'does not match'} pattern, match_means_valid={match_means_valid}, flagged={matched}",
                 "rule_name": rule.name,
                 "field": field,
                 "field_value": str(field_value),
                 "pattern": pattern,
+                "pattern_matched": pattern_matched,
+                "match_means_valid": match_means_valid,
                 "matched": matched
             }
         }

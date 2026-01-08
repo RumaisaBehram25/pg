@@ -69,3 +69,5 @@ def downgrade() -> None:
     op.drop_column('claims', 'submitted_at')
     op.drop_column('claims', 'reversal_date')
 
+
+

@@ -24,6 +24,10 @@ class JobStatusResponse(BaseModel):
     error_count: Optional[int] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    fraud_status: Optional[str] = "pending"
+    fraud_flags_count: Optional[int] = 0
+    fraud_started_at: Optional[datetime] = None
+    fraud_completed_at: Optional[datetime] = None
 
 
 class JobSummary(BaseModel):
@@ -35,6 +39,8 @@ class JobSummary(BaseModel):
     error_count: Optional[int] = None
     created_at: datetime
     completed_at: Optional[datetime] = None
+    fraud_status: Optional[str] = "pending"
+    fraud_flags_count: Optional[int] = 0
 
 
 class JobListResponse(BaseModel):
