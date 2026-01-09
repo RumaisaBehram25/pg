@@ -777,8 +777,18 @@ class FraudDetectionEngine:
         field = params.get("field", "prescriber_npi")
         pattern = params.get("pattern", "^[0-9]{10}$")
         null_is_fail = params.get("null_is_fail", False)
-        match_means_valid = params.get("match_means_valid", False)
         case_insensitive = params.get("case_insensitive", False)
+        
+        # Smart default for match_means_valid:
+        # If null_is_fail is True, this is likely a validation rule (checking required format)
+        # If pattern starts with ^ and ends with $, it's a format validation pattern
+        # In both cases, default match_means_valid to True
+        if "match_means_valid" in params:
+            match_means_valid = params.get("match_means_valid")
+        else:
+            # Auto-detect: validation rules should flag when pattern DOESN'T match
+            is_format_validation = (pattern.startswith("^") and pattern.endswith("$")) or null_is_fail
+            match_means_valid = is_format_validation
         
         field_value = self._get_field_value(claim, field)
         

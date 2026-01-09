@@ -242,6 +242,14 @@ class RuleService:
             try:
                 rule_code = rule_data.get("rule_code")
                 
+                # Get is_active value - support both "enabled" and "is_active" field names
+                # Default to False if not provided (don't auto-activate rules)
+                is_active = rule_data.get("is_active")
+                if is_active is None:
+                    is_active = rule_data.get("enabled")
+                if is_active is None:
+                    is_active = False  # Default to inactive if not specified
+                
                 # Check if exists
                 existing = db.query(Rule).filter(
                     Rule.tenant_id == tenant_id,
@@ -249,28 +257,39 @@ class RuleService:
                 ).first()
                 
                 if existing:
-                    skipped += 1
-                    continue
-                
-                # Create rule
-                new_rule = Rule(
-                    tenant_id=tenant_id,
-                    created_by=user_id,
-                    name=rule_data.get("name"),
-                    description=rule_data.get("name"),
-                    rule_code=rule_code,
-                    category=rule_data.get("category"),
-                    severity=rule_data.get("severity"),
-                    recoupable=rule_data.get("recoupable", True),
-                    logic_type=rule_data.get("logic_type"),
-                    parameters=rule_data.get("parameters", {}),
-                    rule_definition=rule_data.get("parameters", {}),
-                    is_active=rule_data.get("enabled", True),
-                    version=1
-                )
-                
-                db.add(new_rule)
-                loaded += 1
+                    # Update existing rule instead of skipping
+                    existing.name = rule_data.get("name")
+                    existing.description = rule_data.get("name")
+                    existing.category = rule_data.get("category")
+                    existing.severity = rule_data.get("severity")
+                    existing.recoupable = rule_data.get("recoupable", True)
+                    existing.logic_type = rule_data.get("logic_type")
+                    existing.parameters = rule_data.get("parameters", {})
+                    existing.rule_definition = rule_data.get("parameters", {})
+                    existing.is_active = is_active
+                    existing.version += 1
+                    existing.updated_at = datetime.utcnow()
+                    loaded += 1
+                else:
+                    # Create new rule
+                    new_rule = Rule(
+                        tenant_id=tenant_id,
+                        created_by=user_id,
+                        name=rule_data.get("name"),
+                        description=rule_data.get("name"),
+                        rule_code=rule_code,
+                        category=rule_data.get("category"),
+                        severity=rule_data.get("severity"),
+                        recoupable=rule_data.get("recoupable", True),
+                        logic_type=rule_data.get("logic_type"),
+                        parameters=rule_data.get("parameters", {}),
+                        rule_definition=rule_data.get("parameters", {}),
+                        is_active=is_active,
+                        version=1
+                    )
+                    
+                    db.add(new_rule)
+                    loaded += 1
                 
             except Exception as e:
                 errors.append(f"{rule_code}: {str(e)}")

@@ -298,8 +298,9 @@ def _create_claim(db, row: dict, job_id: str, tenant_id: str):
     if claim_status:
         claim_status = claim_status.upper()
     
-    paid_amount = None
-    if copay_amount is not None and plan_paid_amount is not None:
+    # Read paid_amount from CSV if available, otherwise calculate it
+    paid_amount = _parse_decimal(row.get('paid_amount'))
+    if paid_amount is None and copay_amount is not None and plan_paid_amount is not None:
         paid_amount = copay_amount + plan_paid_amount
     
     reversal_indicator = (claim_status == 'REVERSED') if claim_status else False
@@ -331,8 +332,8 @@ def _create_claim(db, row: dict, job_id: str, tenant_id: str):
         amount=ingredient_cost,
         prescription_date=fill_date,
         paid_amount=paid_amount,
-        allowed_amount=None,
-        dispensing_fee=None,
+        allowed_amount=_parse_decimal(row.get('allowed_amount')),
+        dispensing_fee=_parse_decimal(row.get('dispensing_fee')),
         pa_required=False,
         pa_reference=None,
         daw_code=None,

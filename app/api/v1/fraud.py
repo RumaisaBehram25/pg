@@ -350,3 +350,68 @@ async def get_fraud_stats(
             status_code=500,
             detail=f"Failed to get fraud stats: {str(e)}"
         )
+
+
+@router.get("/stats/by-rule-code")
+async def get_stats_by_rule_code(
+    job_id: Optional[UUID] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get statistics grouped by rule_code (useful for checking expected test cases)"""
+    try:
+        base_query = db.query(FlaggedClaim).filter(
+            FlaggedClaim.tenant_id == current_user.tenant_id
+        )
+        
+        if job_id:
+            base_query = base_query.join(Claim, FlaggedClaim.claim_id == Claim.id).filter(
+                Claim.ingestion_id == job_id
+            )
+        
+        # Group by rule_code
+        flags_by_rule_code = db.query(
+            FlaggedClaim.rule_code,
+            func.count(FlaggedClaim.id).label('flag_count'),
+            func.count(func.distinct(FlaggedClaim.claim_id)).label('unique_claims')
+        ).filter(
+            FlaggedClaim.tenant_id == current_user.tenant_id,
+            FlaggedClaim.rule_code.isnot(None)
+        )
+        
+        if job_id:
+            flags_by_rule_code = flags_by_rule_code.join(
+                Claim, FlaggedClaim.claim_id == Claim.id
+            ).filter(Claim.ingestion_id == job_id)
+        
+        flags_by_rule_code = flags_by_rule_code.group_by(FlaggedClaim.rule_code).order_by(
+            func.count(FlaggedClaim.id).desc()
+        ).all()
+        
+        # Get sample claim IDs for each rule_code
+        result = []
+        for rule_code, flag_count, unique_claims in flags_by_rule_code:
+            sample_claims = db.query(Claim.claim_id, Claim.claim_number).join(
+                FlaggedClaim, Claim.id == FlaggedClaim.claim_id
+            ).filter(
+                FlaggedClaim.rule_code == rule_code,
+                FlaggedClaim.tenant_id == current_user.tenant_id
+            ).limit(5).all()
+            
+            result.append({
+                "rule_code": rule_code,
+                "flag_count": flag_count,
+                "unique_claims": unique_claims,
+                "sample_claim_ids": [c.claim_id or c.claim_number for c in sample_claims]
+            })
+        
+        return {
+            "total_rule_codes": len(result),
+            "flags_by_rule_code": result
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get stats by rule code: {str(e)}"
+        )

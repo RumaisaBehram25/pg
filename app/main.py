@@ -14,12 +14,21 @@ app = FastAPI(
 )
 
 
+# CORS configuration - handle empty or missing ALLOWED_ORIGINS
+allowed_origins = settings.ALLOWED_ORIGINS.split(",") if settings.ALLOWED_ORIGINS else []
+# Filter out empty strings and add common development origins
+allowed_origins = [origin.strip() for origin in allowed_origins if origin.strip()]
+# Add FastAPI docs origin if not already included
+if "http://localhost:8000" not in allowed_origins:
+    allowed_origins.append("http://localhost:8000")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS.split(","),
+    allow_origins=allowed_origins if allowed_origins else ["*"],  # Allow all in dev if empty
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 app.add_middleware(TenantContextMiddleware)
 

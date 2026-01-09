@@ -46,8 +46,8 @@ Create database `pharma_db` in PostgreSQL.
 ### 4. Environment File (.env)
 ```env
 DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/pharma_db
-SECRET_KEY=super-secret-key-change-this-in-production-min-32-characters-long
-JWT_ALGORITHM=HS256
+SECRET_KEY=super-secret-key-change-this-in-production-min-32-characters-long 
+JWT_ALGORITHM=HS256 
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 REDIS_URL=redis://localhost:6379/0
 ```

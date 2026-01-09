@@ -9,7 +9,7 @@ class RuleDefinition(BaseModel):
     conditions: Optional[list] = []
     
     class Config:
-        extra = "allow"
+        extra = "allow"  
 
 
 class RuleCreate(BaseModel):
