@@ -36,17 +36,17 @@ const Sidebar = () => {
 
 
   return (
-    <div className="w-64 bg-white h-screen flex flex-col shadow-lg">
+    <div className="w-64 bg-white h-screen flex flex-col shadow-lg overflow-hidden">
       {/* Logo */}
-      <div className="p-6 flex items-center gap-3">
+      <div className="p-6 flex items-center gap-3 shrink-0">
         <div className="bg-primary rounded-lg p-2">
           <Pill className="w-6 h-6 text-white" />
         </div>
         <span className="text-xl font-bold text-gray-800">PharmAudit</span>
       </div>
 
-      {/* Navigation Items */}
-      <nav className="flex-1 px-3 py-4">
+      {/* Navigation Items - Scrollable */}
+      <nav className="flex-1 px-3 py-4 overflow-y-auto">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.path;
@@ -54,7 +54,7 @@ const Sidebar = () => {
             <Link
               key={item.path}
               to={item.path}
-              className={`flex items-center gap-3 px-4 py-3 mb-1 rounded-lg transition-colors ${
+              className={`flex items-center gap-3 px-4 py-2.5 mb-1 rounded-lg transition-colors ${
                 isActive
                   ? 'bg-gray-100 text-gray-900 font-medium'
                   : 'text-gray-600 hover:bg-gray-50'
@@ -67,21 +67,21 @@ const Sidebar = () => {
         })}
       </nav>
 
-      {/* Bottom Items */}
-      <div className="px-3 py-4 border-t border-gray-200">
+      {/* Bottom Items - Always visible */}
+      <div className="px-3 py-3 border-t border-gray-200 shrink-0 bg-white">
         <Link
           to="/settings"
-          className="flex items-center gap-3 px-4 py-3 mb-1 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors"
+          className="flex items-center gap-3 px-4 py-2.5 mb-1 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors"
         >
           <Settings className="w-5 h-5" />
           <span className="text-sm">Settings</span>
         </Link>
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-4 py-3 mb-1 rounded-lg text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors"
+          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
         >
           <LogOut className="w-5 h-5" />
-          <span className="text-sm">Log out</span>
+          <span className="text-sm font-medium">Log out</span>
         </button>
       </div>
     </div>
