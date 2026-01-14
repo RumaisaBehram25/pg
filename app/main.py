@@ -14,38 +14,18 @@ app = FastAPI(
 )
 
 
-allowed_origins = settings.ALLOWED_ORIGINS.split(",") if settings.ALLOWED_ORIGINS else []
-allowed_origins = [origin.strip() for origin in allowed_origins if origin.strip()]
-if "http://localhost:8000" not in allowed_origins:
-    allowed_origins.append("http://localhost:8000")
-# Add frontend origins for local development
-for port in [5173, 5174, 5175, 5176]:
-    origin = f"http://localhost:{port}"
-    if origin not in allowed_origins:
-        allowed_origins.append(origin)
-# Add Vercel production domains
-vercel_domains = [
-    "https://pharmadb.vercel.app",
-    "https://pharma-db.vercel.app",
-]
-for domain in vercel_domains:
-    if domain not in allowed_origins:
-        allowed_origins.append(domain)
-
-# Allow all vercel.app preview deployments
-allow_all_origins = True  # Set to True to allow any origin (for debugging)
-
-print(f"CORS allowed origins: {allowed_origins}")
-
+# CORS Configuration - Allow all origins for deployment flexibility
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if allow_all_origins else allowed_origins,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,  # Must be False when using allow_origins=["*"]
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
 app.add_middleware(TenantContextMiddleware)
+
+print("CORS: Allowing all origins")
 
 
 @app.get("/")
