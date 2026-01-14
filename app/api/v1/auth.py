@@ -12,6 +12,7 @@ from app.schemas.auth import (
 )
 from app.models.tenant import Tenant
 from app.models.user import User, UserRole
+from app.services.audit_service import AuditService
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -92,6 +93,22 @@ def login(credentials: UserLogin, request: Request, db: Session = Depends(get_db
         "email": user.email,
         "role": user.role.value,
     })
+
+    # Log successful login
+    try:
+        client_ip = request.client.host if request.client else None
+        AuditService.log(
+            db=db,
+            tenant_id=user.tenant_id,
+            user_id=user.id,
+            action=AuditService.ACTION_LOGIN,
+            resource_type=AuditService.RESOURCE_USER,
+            resource_id=user.id,
+            ip_address=client_ip,
+            details=f"User {user.email} logged in"
+        )
+    except Exception:
+        pass  # Don't fail login if audit logging fails
 
     return LoginResponse(
         access_token=token,

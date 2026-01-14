@@ -4,6 +4,7 @@ Multi-tenant pharmacy claims auditing system with fraud detection.
 
 ## Tech Stack
 
+- **Frontend:** React 19 + Vite + Tailwind CSS
 - **Backend:** FastAPI + Celery + Redis
 - **Database:** PostgreSQL with Row-Level Security (RLS)
 - **Auth:** JWT + bcrypt
@@ -74,15 +75,26 @@ This script creates the `pharmacy_app` user and grants necessary permissions for
 DATABASE_URL=postgresql://pharmacy_app:secure_password_here@localhost:5432/pharma_db
 ```
 
-### 7. Start Application (3 terminals)
+### 7. Start Backend (3 terminals)
 ```bash
-
+# Terminal 1 - API Server
 uvicorn app.main:app --reload
 
+# Terminal 2 - Celery Worker
 celery -A app.core.celery_config:celery_app worker --loglevel=info --pool=solo
 
+# Terminal 3 - Redis (if not running)
 docker start redis
 ```
+
+### 8. Start Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend will be available at `http://localhost:5173`
 
 ## API Endpoints
 
@@ -157,34 +169,6 @@ claim_id,patient_id,rx_number,ndc,drug_name,prescriber_npi,pharmacy_npi,fill_dat
 | E011 | Invalid drug code format |
 | E012 | Future date not allowed |
 | E013 | Invalid NPI format |
-
-## Fraud Detection Rules (32 Total)
-
-| Code | Rule | Type |
-|------|------|------|
-| DR-001 | Duplicate Claim Number | DUPLICATE |
-| DR-002 | Duplicate Patient+Drug+Date | DUPLICATE |
-| DR-003 | Duplicate within X days | DUPLICATE_WINDOW |
-| DR-004 | Same Rx billed multiple times | DUPLICATE |
-| DR-006 | Early refill (<80%) | EARLY_REFILL |
-| DR-007 | Overlapping coverage | OVERLAP |
-| DR-008 | Excess fills in 90 days | COUNT_WINDOW |
-| DR-009 | Same-day multiple fills | DUPLICATE |
-| DR-010 | Quantity > 300 | THRESHOLD |
-| DR-011 | Days supply > 90 | THRESHOLD |
-| DR-012 | Qty/days ratio out of bounds | RATIO_RANGE |
-| DR-013 | Zero/negative quantity | THRESHOLD |
-| DR-014 | Zero/negative days supply | THRESHOLD |
-| DR-015 | Allowed amount <= 0 | THRESHOLD |
-| DR-016 | Paid != plan_paid + copay | EXPRESSION_TOLERANCE |
-| DR-017 | Dispensing fee > $50 | THRESHOLD |
-| DR-018 | Ingredient cost > $10,000 | THRESHOLD |
-| DR-019 | Copay > allowed amount | FIELD_COMPARE |
-| DR-020 | Plan paid < 0 | THRESHOLD |
-| DR-024 | Blocked NDC | IN_LIST |
-| DR-027 | Invalid prescriber NPI | REGEX |
-| DR-029 | Future prescription date | DATE_COMPARE_TODAY |
-| DR-030 | Future fill date | DATE_COMPARE_TODAY |
 
 ## Troubleshooting
 

@@ -58,6 +58,13 @@ class UserCreate(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=255)
     password: str = Field(..., min_length=8, max_length=64)
     role: str = Field(default="USER", pattern="^(ADMIN|USER)$")
+
+
+class UserUpdate(BaseModel):
+    email: EmailStr
+    full_name: str = Field(..., min_length=2, max_length=255)
+    password: str = Field(default="", min_length=0, max_length=64)
+    role: str = Field(default="USER", pattern="^(ADMIN|USER)$")
     
     class Config:
         json_schema_extra = {

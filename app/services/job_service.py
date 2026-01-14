@@ -44,7 +44,11 @@ def get_job(db: Session, job_id: str, tenant_id: str) -> Optional[IngestionJob]:
         {"tenant_id": tenant_id}
     )
     
-    return db.query(IngestionJob).filter(IngestionJob.id == job_id).first()
+    # Explicit tenant filter for extra safety
+    return db.query(IngestionJob).filter(
+        IngestionJob.id == job_id,
+        IngestionJob.tenant_id == tenant_id
+    ).first()
 
 
 def update_job_status(
@@ -95,7 +99,9 @@ def list_jobs(db: Session, tenant_id: str, limit: int = 20) -> list[IngestionJob
         {"tenant_id": tenant_id}
     )
     
+    # Explicit tenant filter for extra safety
     return db.query(IngestionJob)\
+        .filter(IngestionJob.tenant_id == tenant_id)\
         .order_by(IngestionJob.created_at.desc())\
         .limit(limit)\
         .all()

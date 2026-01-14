@@ -18,6 +18,7 @@ from app.schemas.fraud import (
     ReviewRequest
 )
 from app.workers.fraud_detection_task import detect_fraud_for_job
+from app.services.audit_service import AuditService
 from datetime import datetime
 import time
 
@@ -29,8 +30,9 @@ async def list_flagged_claims(
     reviewed: Optional[bool] = Query(None),
     rule_id: Optional[UUID] = Query(None),
     job_id: Optional[UUID] = Query(None),
+    run_id: Optional[UUID] = Query(None, description="Filter by audit run ID"),
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
+    limit: int = Query(100, ge=1, le=10000),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -53,6 +55,9 @@ async def list_flagged_claims(
         if job_id is not None:
             query = query.filter(Claim.ingestion_id == job_id)
         
+        if run_id is not None:
+            query = query.filter(FlaggedClaim.run_id == run_id)
+        
         total = query.count()
         
         flagged_claims = query.order_by(desc(FlaggedClaim.flagged_at)).offset(skip).limit(limit).all()
@@ -68,6 +73,9 @@ async def list_flagged_claims(
         
         if job_id is not None:
             base_count_query = base_count_query.filter(Claim.ingestion_id == job_id)
+        
+        if run_id is not None:
+            base_count_query = base_count_query.filter(FlaggedClaim.run_id == run_id)
         
         total_reviewed = base_count_query.filter(FlaggedClaim.reviewed == True).count()
         total_unreviewed = base_count_query.filter(FlaggedClaim.reviewed == False).count()
@@ -88,9 +96,15 @@ async def list_flagged_claims(
                     tenant_id=fc.tenant_id,
                     claim_id=fc.claim_id,
                     rule_id=fc.rule_id,
-                    rule_name=fc.rule.name,
+                    run_id=fc.run_id,
+                    rule_name=fc.rule.name if fc.rule else None,
+                    rule_code=fc.rule_code or (fc.rule.rule_code if fc.rule else None),
                     rule_version=fc.rule_version,
-                    claim_number=fc.claim.claim_number,
+                    claim_number=fc.claim.claim_number if fc.claim else None,
+                    patient_id=fc.claim.patient_id if fc.claim else None,
+                    drug_name=fc.claim.drug_name if fc.claim else None,
+                    severity=fc.severity,
+                    category=fc.category,
                     matched_conditions=fc.matched_conditions,
                     explanation=normalize_explanation(fc.explanation),
                     flagged_at=fc.flagged_at,
@@ -200,10 +214,29 @@ async def review_flagged_claim(
     db.commit()
     db.refresh(flagged_claim)
     
+    # Save values before audit logging (which does its own commit)
+    flagged_claim_id = str(flagged_claim.id)
+    claim_id = str(flagged_claim.claim_id)
+    reviewed_at = flagged_claim.reviewed_at
+    
+    # Log the review action
+    try:
+        AuditService.log(
+            db=db,
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.id,
+            action=AuditService.ACTION_CLAIM_REVIEWED,
+            resource_type=AuditService.RESOURCE_FLAG,
+            resource_id=flagged_claim.id,
+            details=f"Reviewed claim {claim_id}"
+        )
+    except Exception:
+        pass  # Don't fail if audit logging fails
+    
     return {
         "message": "Flagged claim reviewed successfully",
-        "flagged_claim_id": str(flagged_claim.id),
-        "reviewed_at": flagged_claim.reviewed_at
+        "flagged_claim_id": flagged_claim_id,
+        "reviewed_at": reviewed_at
     }
 
 

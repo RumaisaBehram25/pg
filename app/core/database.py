@@ -29,6 +29,7 @@ def get_db(request: Request):
                 text("SET app.current_tenant_id = :tenant_id"),
                 {"tenant_id": str(tenant_id)}
             )
+        # For unauthenticated requests, RLS policies handle empty/NULL gracefully
         yield session
     except Exception as e:
         print(f"Database session error: {e}")

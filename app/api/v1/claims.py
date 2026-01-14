@@ -13,6 +13,7 @@ from app.services import job_service
 from app import models
 from app.schemas import job as job_schemas
 from app.workers.celery_tasks import process_csv_task
+from app.services.audit_service import AuditService
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,20 @@ async def upload_csv(
         str(file_path),
         str(current_user.tenant_id)
     )
+    
+    # Log CSV upload
+    try:
+        AuditService.log(
+            db=db,
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.id,
+            action=AuditService.ACTION_CSV_UPLOADED,
+            resource_type=AuditService.RESOURCE_JOB,
+            resource_id=job.id,
+            details=f"Uploaded '{file.filename}'"
+        )
+    except Exception:
+        pass
     
     return {
         "job_id": str(job.id),
@@ -336,11 +351,26 @@ async def delete_job_data(
             models.IngestionError.ingestion_id == job_id
         ).delete(synchronize_session=False)
         
+        job_filename = job.filename
         db.delete(job)
         
         db.commit()
         
         logger.info(f"Deleted job {job_id}: {claims_deleted} claims, {flags_deleted} flags, {errors_deleted} errors")
+        
+        # Log job deletion
+        try:
+            AuditService.log(
+                db=db,
+                tenant_id=current_user.tenant_id,
+                user_id=current_user.id,
+                action=AuditService.ACTION_JOB_DELETED,
+                resource_type=AuditService.RESOURCE_JOB,
+                resource_id=None,  # Job already deleted
+                details=f"Deleted '{job_filename}' ({claims_deleted} claims, {flags_deleted} flags)"
+            )
+        except Exception:
+            pass
         
         return DeleteJobResponse(
             job_id=job_id,

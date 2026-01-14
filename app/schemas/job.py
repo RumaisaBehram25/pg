@@ -1,13 +1,9 @@
-"""
-Complete updated app/schemas/job.py
-Add the ClaimResponse and JobClaimsResponse at the end
-"""
+
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, date
 
 
-# ========== EXISTING SCHEMAS (Keep these as-is) ==========
 
 class JobResponse(BaseModel):
     job_id: str
@@ -50,7 +46,7 @@ class JobListResponse(BaseModel):
 class JobErrorDetail(BaseModel):
     row_number: int
     error_message: str
-    raw_row_data: str
+    raw_row_data: Optional[str] = None
 
 
 class JobErrorsResponse(BaseModel):
@@ -59,10 +55,8 @@ class JobErrorsResponse(BaseModel):
     errors: List[JobErrorDetail]
 
 
-# ========== NEW SCHEMAS FOR CLAIMS (Add these) ==========
 
 class ClaimResponse(BaseModel):
-    """Individual claim response"""
     id: str
     claim_number: str
     patient_id: str
@@ -80,15 +74,14 @@ class ClaimResponse(BaseModel):
 
 
 class JobClaimsResponse(BaseModel):
-    """Paginated claims response with metadata"""
     job_id: str
-    total_claims: int           # Total claims in the job
-    returned_claims: int        # Claims in this response
-    skip: int                   # Pagination offset
-    limit: int                  # Page size
-    has_more: bool             # More pages available?
-    current_page: int          # Current page number
-    total_pages: int           # Total number of pages
+    total_claims: int           
+    returned_claims: int        
+    skip: int                   
+    limit: int                  
+    has_more: bool             
+    current_page: int       
+    total_pages: int           
     claims: List[ClaimResponse]
     
     class Config:

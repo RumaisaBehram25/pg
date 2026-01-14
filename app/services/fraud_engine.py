@@ -1,6 +1,4 @@
-"""
-Fraud Detection Engine - Core logic for evaluating claims against rules
-"""
+
 from sqlalchemy.orm import Session
 from sqlalchemy import text, and_, or_
 from datetime import datetime, timedelta
@@ -779,20 +777,14 @@ class FraudDetectionEngine:
         null_is_fail = params.get("null_is_fail", False)
         case_insensitive = params.get("case_insensitive", False)
         
-        # Smart default for match_means_valid:
-        # If null_is_fail is True, this is likely a validation rule (checking required format)
-        # If pattern starts with ^ and ends with $, it's a format validation pattern
-        # In both cases, default match_means_valid to True
         if "match_means_valid" in params:
             match_means_valid = params.get("match_means_valid")
         else:
-            # Auto-detect: validation rules should flag when pattern DOESN'T match
             is_format_validation = (pattern.startswith("^") and pattern.endswith("$")) or null_is_fail
             match_means_valid = is_format_validation
         
         field_value = self._get_field_value(claim, field)
         
-        # Handle null/empty values
         if field_value is None or str(field_value).strip() == "":
             matched = null_is_fail
             return {
@@ -809,17 +801,13 @@ class FraudDetectionEngine:
                 }
             }
         
-        # Check pattern match
         flags = re.IGNORECASE if case_insensitive else 0
         regex_match = re.search(pattern, str(field_value), flags)
         pattern_matched = bool(regex_match)
         
-        # Determine if claim should be flagged
         if match_means_valid:
-            # Validation mode: flag when pattern DOESN'T match (invalid format)
             matched = not pattern_matched
         else:
-            # Monitoring mode: flag when pattern MATCHES (suspicious content)
             matched = pattern_matched
         
         return {

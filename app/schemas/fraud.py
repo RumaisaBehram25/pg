@@ -18,9 +18,15 @@ class FlaggedClaimResponse(BaseModel):
     tenant_id: UUID
     claim_id: UUID
     rule_id: UUID
+    run_id: Optional[UUID] = None
     rule_name: Optional[str] = None
+    rule_code: Optional[str] = None
     rule_version: int
     claim_number: Optional[str] = None
+    patient_id: Optional[str] = None
+    drug_name: Optional[str] = None
+    severity: Optional[str] = None
+    category: Optional[str] = None
     matched_conditions: Optional[Dict[str, Any]] = None
     explanation: Optional[Dict[str, Any]] = None
     flagged_at: datetime

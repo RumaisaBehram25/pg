@@ -33,9 +33,9 @@ def detect_fraud_for_job(job_id: Optional[str], tenant_id: str, re_run: bool = F
     
     try:
         if job_id:
-            print(f"🔍 Starting fraud detection for job: {job_id}")
+            print(f" Starting fraud detection for job: {job_id}")
         else:
-            print(f"🔍 Starting retrospective fraud detection for all claims (tenant: {tenant_id})")
+            print(f" Starting retrospective fraud detection for all claims (tenant: {tenant_id})")
         
         db.execute(
             text("SET app.current_tenant_id = :tenant_id"),
@@ -65,14 +65,14 @@ def detect_fraud_for_job(job_id: Optional[str], tenant_id: str, re_run: bool = F
             audit_run.completed_at = datetime.utcnow()
             db.commit()
             _update_job_fraud_status(db, job_id, "completed", flags_count=0, end=True)
-            print(f"⚠️  No claims found")
+            print(f" No claims found")
             return {
                 "status": "no_claims",
                 "message": "No claims to evaluate",
                 "run_id": str(audit_run.id)
             }
         
-        print(f"✅ Found {len(claims)} claims to evaluate")
+        print(f" Found {len(claims)} claims to evaluate")
         
         active_rules = RuleService.get_active_rules(db, uuid.UUID(tenant_id))
         
@@ -81,14 +81,14 @@ def detect_fraud_for_job(job_id: Optional[str], tenant_id: str, re_run: bool = F
             audit_run.completed_at = datetime.utcnow()
             db.commit()
             _update_job_fraud_status(db, job_id, "completed", flags_count=0, end=True)
-            print(f"⚠️  No active rules for tenant {tenant_id}")
+            print(f"  No active rules for tenant {tenant_id}")
             return {
                 "status": "no_rules",
                 "message": "No active rules to apply",
                 "run_id": str(audit_run.id)
             }
         
-        print(f"✅ Found {len(active_rules)} active rules")
+        print(f" Found {len(active_rules)} active rules")
         
         fraud_engine = FraudDetectionEngine(db, tenant_id)
         
@@ -113,7 +113,7 @@ def detect_fraud_for_job(job_id: Optional[str], tenant_id: str, re_run: bool = F
                         tenant_id, str(audit_run.id)
                     )
                     flags_created += 1
-                    print(f"🚩 Flagged: {claim.claim_number} by rule '{rule.name}'")
+                    print(f" Flagged: {claim.claim_number} by rule '{rule.name}'")
         
         audit_run.status = "completed"
         audit_run.completed_at = datetime.utcnow()
@@ -125,7 +125,7 @@ def detect_fraud_for_job(job_id: Optional[str], tenant_id: str, re_run: bool = F
         
         _update_job_fraud_status(db, job_id, "completed", flags_count=flags_created, end=True)
         
-        print(f"✅ Fraud detection complete: {flags_created} claims flagged")
+        print(f" Fraud detection complete: {flags_created} claims flagged")
         
         return {
             "status": "completed",
@@ -143,7 +143,7 @@ def detect_fraud_for_job(job_id: Optional[str], tenant_id: str, re_run: bool = F
             audit_run.completed_at = datetime.utcnow()
             db.commit()
         _update_job_fraud_status(db, job_id, "failed", end=True)
-        print(f"❌ Fraud detection failed: {str(e)}")
+        print(f" Fraud detection failed: {str(e)}")
         return {
             "status": "failed",
             "error": str(e),

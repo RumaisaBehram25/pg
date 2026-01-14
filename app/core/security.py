@@ -15,17 +15,14 @@ security = HTTPBearer()
 
 
 def hash_password(password: str) -> str:
-    """Hash a plain password."""
     return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plain password against a hashed password."""
     return pwd_context.verify(plain_password, hashed_password)
 
 
 def create_jwt(data: dict) -> str:
-    """Create a JWT token with expiration."""
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
@@ -34,7 +31,6 @@ def create_jwt(data: dict) -> str:
 
 
 def decode_jwt(token: str) -> dict:
-    """Decode a JWT token."""
     payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
     return payload
 
@@ -54,14 +50,12 @@ def get_current_user(
     token = credentials.credentials
     
     try:
-        # Decode JWT token
         payload = decode_jwt(token)
         user_id = payload.get("user_id")
         tenant_id = payload.get("tenant_id")
         email = payload.get("email")
         role = payload.get("role")
         
-        # Validate all required fields are present
         if not all([user_id, tenant_id, email, role]):
             raise credentials_exception
         
@@ -111,9 +105,6 @@ def get_current_admin(current_user = Depends(get_current_user)):
     return current_user
 
 def require_role(required_role: str):
-    """
-    Dependency to check if user has required role.
-    """
     def role_checker(current_user: User = Depends(get_current_user)) -> User:
         if current_user.role != required_role:
             raise HTTPException(

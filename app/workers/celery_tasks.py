@@ -90,7 +90,7 @@ def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
         print(f" JOB FAILED: {str(e)}")
         print(f"{'='*80}\n")
         
-        _mark_job_failed(db, job_id)
+        _mark_job_failed(db, job_id, error_message=str(e))
         
         return {
             "status": "failed",
@@ -372,12 +372,24 @@ def _finalize_job(db, job, result: dict):
         print(f"⚠️ Failed to trigger fraud detection: {e}")
 
 
-def _mark_job_failed(db, job_id: str):
+def _mark_job_failed(db, job_id: str, error_message: str = None):
     try:
         job = db.query(IngestionJob).filter(IngestionJob.id == job_id).first()
         if job:
             job.status = "failed"
             job.completed_at = datetime.utcnow()
+            
+            # Store the error message as an IngestionError with row_number = 0
+            if error_message:
+                job_error = IngestionError(
+                    tenant_id=job.tenant_id,
+                    ingestion_id=job.id,
+                    row_number=0,
+                    error_message=error_message,
+                    raw_row_data=None
+                )
+                db.add(job_error)
+            
             db.commit()
     except Exception as e:
         print(f"  Failed to update job status: {e}")

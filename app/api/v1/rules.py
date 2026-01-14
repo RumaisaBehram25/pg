@@ -14,6 +14,7 @@ from app.schemas.rule import (
     RuleVersionResponse
 )
 from app.services.rule_service import RuleService
+from app.services.audit_service import AuditService
 
 
 router = APIRouter(prefix="/rules", tags=["Rules"])
@@ -32,6 +33,21 @@ async def create_rule(
             user_id=current_user.id,
             rule_data=rule_data
         )
+        
+        # Log rule creation
+        try:
+            AuditService.log(
+                db=db,
+                tenant_id=current_user.tenant_id,
+                user_id=current_user.id,
+                action=AuditService.ACTION_RULE_CREATED,
+                resource_type=AuditService.RESOURCE_RULE,
+                resource_id=rule.id,
+                details=f"Created rule '{rule.name}'"
+            )
+        except Exception:
+            pass
+        
         return rule
     except Exception as e:
         raise HTTPException(
@@ -161,6 +177,21 @@ async def toggle_rule(
             detail=f"Rule {rule_id} not found"
         )
     
+    # Log rule toggle
+    try:
+        status_str = "activated" if toggle_data.is_active else "deactivated"
+        AuditService.log(
+            db=db,
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.id,
+            action=AuditService.ACTION_RULE_TOGGLED,
+            resource_type=AuditService.RESOURCE_RULE,
+            resource_id=rule_id,
+            details=f"Rule '{rule.name}' {status_str}"
+        )
+    except Exception:
+        pass
+    
     return rule
 
 
@@ -181,6 +212,20 @@ async def delete_rule(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Rule {rule_id} not found"
         )
+    
+    # Log rule deletion
+    try:
+        AuditService.log(
+            db=db,
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.id,
+            action=AuditService.ACTION_RULE_DELETED,
+            resource_type=AuditService.RESOURCE_RULE,
+            resource_id=rule_id,
+            details=f"Deleted rule {rule_id}"
+        )
+    except Exception:
+        pass
     
     return None
 
