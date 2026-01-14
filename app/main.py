@@ -13,17 +13,18 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Add TenantContext middleware FIRST (runs after CORS)
+app.add_middleware(TenantContextMiddleware)
 
-# CORS Configuration - Allow all origins for deployment flexibility
+# Add CORS middleware LAST (runs FIRST - handles preflight)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,  # Must be False when using allow_origins=["*"]
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_credentials=False,
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
-app.add_middleware(TenantContextMiddleware)
 
 print("CORS: Allowing all origins")
 
