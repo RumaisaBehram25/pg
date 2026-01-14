@@ -11,10 +11,17 @@ import {
   AlertTriangle,
   History
 } from 'lucide-react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 const Sidebar = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    navigate('/login');
+  };
 
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
@@ -27,10 +34,6 @@ const Sidebar = () => {
     { icon: HelpCircle, label: 'Support', path: '/support' },
   ];
 
-  const bottomItems = [
-    { icon: Settings, label: 'Settings', path: '/settings' },
-    { icon: LogOut, label: 'Log out', path: '/logout' },
-  ];
 
   return (
     <div className="w-64 bg-white h-screen flex flex-col shadow-lg">
@@ -66,19 +69,20 @@ const Sidebar = () => {
 
       {/* Bottom Items */}
       <div className="px-3 py-4 border-t border-gray-200">
-        {bottomItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className="flex items-center gap-3 px-4 py-3 mb-1 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors"
-            >
-              <Icon className="w-5 h-5" />
-              <span className="text-sm">{item.label}</span>
-            </Link>
-          );
-        })}
+        <Link
+          to="/settings"
+          className="flex items-center gap-3 px-4 py-3 mb-1 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors"
+        >
+          <Settings className="w-5 h-5" />
+          <span className="text-sm">Settings</span>
+        </Link>
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center gap-3 px-4 py-3 mb-1 rounded-lg text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors"
+        >
+          <LogOut className="w-5 h-5" />
+          <span className="text-sm">Log out</span>
+        </button>
       </div>
     </div>
   );
