@@ -7,12 +7,16 @@ import FlaggedClaims from './pages/FlaggedClaims';
 import Rules from './pages/Rules';
 import AuditReports from './pages/AuditReports';
 import ManageUsers from './pages/ManageUsers';
+
 import AuditTrail from './pages/AuditTrail';
+import Settings from './pages/Settings';
 import Support from './pages/Support';
+import CsvDocumentation from './pages/Csvdocumentation';
+import Rulesdocumentation from './pages/Rulesdocumentation';
 import './index.css';
 
 // Placeholder components for other routes
-const Settings = () => <div className="flex-1 p-8"><h1 className="text-2xl font-bold">Settings</h1></div>;
+
 
 const Logout = () => {
   // Clear auth data
@@ -90,6 +94,18 @@ function App() {
             <Support />
           </ProtectedRoute>
         } />
+        <Route path="/docs/csv-format" element={
+          <ProtectedRoute>
+            <CsvDocumentation />
+          </ProtectedRoute>
+        } />
+
+        <Route path="/docs/fraud-rules" element={
+          <ProtectedRoute>
+            <Rulesdocumentation />
+          </ProtectedRoute>
+        } />
+
         
         <Route path="/settings" element={
           <ProtectedRoute>

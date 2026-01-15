@@ -13,20 +13,28 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add TenantContext middleware FIRST (runs after CORS)
-app.add_middleware(TenantContextMiddleware)
+# CORS Configuration
+allowed_origins = settings.ALLOWED_ORIGINS.split(",") if settings.ALLOWED_ORIGINS else []
+allowed_origins = [origin.strip() for origin in allowed_origins if origin.strip()]
+if "http://localhost:8000" not in allowed_origins:
+    allowed_origins.append("http://localhost:8000")
+# Add frontend origins for local development
+for port in [5173, 5174, 5175, 5176]:
+    origin = f"http://localhost:{port}"
+    if origin not in allowed_origins:
+        allowed_origins.append(origin)
 
-# Add CORS middleware LAST (runs FIRST - handles preflight)
+print(f"CORS allowed origins: {allowed_origins}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
+    allow_origins=allowed_origins if allowed_origins else ["*"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
-
-print("CORS: Allowing all origins")
+app.add_middleware(TenantContextMiddleware)
 
 
 @app.get("/")

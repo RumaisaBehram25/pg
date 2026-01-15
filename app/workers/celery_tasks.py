@@ -39,7 +39,7 @@ class DatabaseTask(Task):
 
 
 @celery_app.task(base=DatabaseTask, bind=True, name='process_csv_task')
-def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
+def process_csv_task(self, job_id: str, tenant_id: str, file_path: str = None):
    
     db = self.db
     
@@ -60,8 +60,8 @@ def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
         
         _update_job_status(db, job, "processing")
         
-        file_path = Path(file_path)
-        rows = _read_csv_file(file_path)
+       # Read CSV from database instead of file
+        rows = _read_csv_from_db(db, job_id)
         
         _validate_csv_structure(rows)
         
@@ -69,7 +69,8 @@ def process_csv_task(self, job_id: str, file_path: str, tenant_id: str):
         
         _finalize_job(db, job, result)
         
-        _cleanup_file(file_path)
+        # No file cleanup needed - data is in database
+        print(f"  CSV processing complete\n")
         
         print(f"\n{'='*80}")
         print(f"JOB COMPLETED")
@@ -130,15 +131,22 @@ def _update_job_status(db, job, status: str):
     print(f" Job status: {status}\n")
 
 
-def _read_csv_file(file_path: Path):
+def _read_csv_from_db(db, job_id: str):
+    """Read CSV content from database instead of file"""
     from app.services.csv_parser import read_csv_file
     
-    if not file_path.exists():
-        raise FileNotFoundError(f"File not found: {file_path}")
+    job = db.query(IngestionJob).filter(IngestionJob.id == job_id).first()
     
-    print(f" Reading: {file_path.name}")
+    if not job:
+        raise ValueError(f"Job {job_id} not found")
     
-    rows = read_csv_file(str(file_path))
+    if not job.csv_content:
+        raise ValueError(f"No CSV content found for job {job_id}")
+    
+    print(f" Reading CSV from database: {job.filename}")
+    
+    # Parse CSV content from database
+    rows = read_csv_file(csv_content=job.csv_content)
     
     if not rows:
         raise ValueError("CSV file is empty")
@@ -146,8 +154,6 @@ def _read_csv_file(file_path: Path):
     print(f" Read {len(rows)} rows\n")
     
     return rows
-
-
 def _validate_csv_structure(rows):
     required_headers = {'claim_id', 'patient_id', 'ndc', 'fill_date', 'days_supply', 'quantity'}
     headers = set(rows[0].keys()) if rows else set()
@@ -395,10 +401,3 @@ def _mark_job_failed(db, job_id: str, error_message: str = None):
         print(f"  Failed to update job status: {e}")
 
 
-def _cleanup_file(file_path: Path):
-    try:
-        if file_path.exists():
-            file_path.unlink()
-            print(f"  Deleted: {file_path.name}")
-    except Exception as e:
-        print(f"  Failed to delete file: {e}")

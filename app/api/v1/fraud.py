@@ -282,108 +282,43 @@ async def trigger_fraud_detection(
             status_code=500,
             detail=f"Failed to trigger fraud detection: {str(e)}"
         )
-
-
-@router.get("/stats", response_model=DetectionStatsResponse)
+@router.get("/stats")
 async def get_fraud_stats(
-    job_id: Optional[UUID] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    """Get fraud detection statistics - returns TOTAL FLAGS (not unique claims)"""
     
-    try:
-        base_query = db.query(FlaggedClaim).filter(
-            FlaggedClaim.tenant_id == current_user.tenant_id
-        )
-        
-        if job_id:
-            base_query = base_query.join(Claim, FlaggedClaim.claim_id == Claim.id).filter(
-                Claim.ingestion_id == job_id
-            )
-        
-        total_flagged = db.query(func.count(func.distinct(FlaggedClaim.claim_id))).filter(
-            FlaggedClaim.tenant_id == current_user.tenant_id
-        )
-        
-        if job_id:
-            total_flagged = total_flagged.join(Claim, FlaggedClaim.claim_id == Claim.id).filter(
-                Claim.ingestion_id == job_id
-            )
-        
-        total_flagged_claims = total_flagged.scalar()
-        
-        total_reviewed = base_query.filter(FlaggedClaim.reviewed == True).count()
-        total_unreviewed = base_query.filter(FlaggedClaim.reviewed == False).count()
-        
-        flags_by_rule_query = db.query(
-            Rule.name,
-            func.count(FlaggedClaim.id).label('count')
-        ).join(
-            FlaggedClaim, Rule.id == FlaggedClaim.rule_id
-        ).filter(
-            FlaggedClaim.tenant_id == current_user.tenant_id
-        )
-        
-        if job_id:
-            flags_by_rule_query = flags_by_rule_query.join(
-                Claim, FlaggedClaim.claim_id == Claim.id
-            ).filter(
-                Claim.ingestion_id == job_id
-            )
-        
-        flags_by_rule = flags_by_rule_query.group_by(Rule.name).all()
-        
-        recent_flags_query = base_query.options(
-            joinedload(FlaggedClaim.rule),
-            joinedload(FlaggedClaim.claim)
-        ).order_by(desc(FlaggedClaim.flagged_at)).limit(10)
-        
-        recent_flags = recent_flags_query.all()
-        
-        def normalize_explanation(expl):
-            if expl is None:
-                return {"summary": "No explanation available"}
-            if isinstance(expl, str):
-                return {"summary": expl}
-            if isinstance(expl, dict):
-                return expl
-            return {"summary": str(expl)}
-        
-        return {
-            "total_flagged_claims": total_flagged_claims,
-            "total_reviewed": total_reviewed,
-            "total_unreviewed": total_unreviewed,
-            "flags_by_rule": [
-                {"rule_name": rule_name, "count": count}
-                for rule_name, count in flags_by_rule
-            ],
-            "recent_flags": [
-                {
-                    "id": str(fc.id),
-                    "tenant_id": str(fc.tenant_id),
-                    "claim_id": str(fc.claim_id),
-                    "rule_id": str(fc.rule_id),
-                    "rule_name": fc.rule.name,
-                    "rule_version": fc.rule_version,
-                    "claim_number": fc.claim.claim_number,
-                    "matched_conditions": fc.matched_conditions,
-                    "explanation": normalize_explanation(fc.explanation),
-                    "flagged_at": fc.flagged_at,
-                    "reviewed": fc.reviewed,
-                    "reviewed_by": str(fc.reviewed_by) if fc.reviewed_by else None,
-                    "reviewed_at": fc.reviewed_at,
-                    "reviewer_notes": fc.reviewer_notes
-                }
-                for fc in recent_flags
-            ]
-        }
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get fraud stats: {str(e)}"
-        )
-
+    tenant_id = current_user.tenant_id
+    
+    # Count total flags
+    total_flags = db.query(func.count(FlaggedClaim.id)).filter(
+        FlaggedClaim.tenant_id == tenant_id
+    ).scalar() or 0
+    
+    # Count unreviewed flags
+    total_unreviewed = db.query(func.count(FlaggedClaim.id)).filter(
+        FlaggedClaim.tenant_id == tenant_id,
+        FlaggedClaim.reviewed == False
+    ).scalar() or 0
+    
+    # Count reviewed flags
+    total_reviewed = db.query(func.count(FlaggedClaim.id)).filter(
+        FlaggedClaim.tenant_id == tenant_id,
+        FlaggedClaim.reviewed == True
+    ).scalar() or 0
+    
+    # Optional: Also return unique flagged claims
+    unique_flagged_claims = db.query(func.count(func.distinct(FlaggedClaim.claim_id))).filter(
+        FlaggedClaim.tenant_id == tenant_id
+    ).scalar() or 0
+    
+    return {
+        "total_flags": total_flags,              # 2855
+        "total_unreviewed": total_unreviewed,    # 2853
+        "total_reviewed": total_reviewed,        # 2
+        "unique_flagged_claims": unique_flagged_claims  # 1286 (optional)
+    }
 
 @router.get("/stats/by-rule-code")
 async def get_stats_by_rule_code(

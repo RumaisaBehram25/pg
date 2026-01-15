@@ -187,17 +187,16 @@ const AuditTrail = () => {
                   ];
                   exportToCsv(logs, columns, `audit_trail_${getDateString()}.csv`);
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+                className="px-4 py-2 text-sm text-primary hover:bg-primary/10 rounded-lg transition-colors"
               >
-                <Download className="w-4 h-4" />
+             
                 Export CSV
               </button>
             )}
             <button
               onClick={fetchLogs}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              className="px-4 py-2 text-sm text-primary hover:bg-primary/10 rounded-lg transition-color"
             >
-              <RefreshCw className="w-4 h-4" />
               Refresh
             </button>
           </div>

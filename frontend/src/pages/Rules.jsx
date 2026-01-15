@@ -24,7 +24,7 @@ const Rules = () => {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   
   // Status filter
-  const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'active', 'inactive'
+  const [statusFilter, setStatusFilter] = useState('all');
 
   useEffect(() => {
     fetchRules();
@@ -34,7 +34,6 @@ const Rules = () => {
   const fetchCurrentUser = async () => {
     try {
       const response = await usersAPI.getCurrentUser();
-      console.log('Current user:', response.data);
       setCurrentUser(response.data);
     } catch (err) {
       console.error('Failed to fetch current user:', err);
@@ -44,13 +43,9 @@ const Rules = () => {
   const isAdmin = currentUser?.role === 'ADMIN';
 
   const checkAdminAccess = () => {
-    // If user hasn't loaded yet, allow the action and let backend handle auth
     if (!currentUser) {
-      console.log('User not loaded yet, allowing action');
       return true;
     }
-    
-    console.log('Checking admin access. Current user role:', currentUser?.role, 'Is admin:', isAdmin);
     
     if (!isAdmin) {
       setShowAdminOnlyModal(true);
@@ -84,7 +79,6 @@ const Rules = () => {
       await fetchRules();
       showNotification(`Rule ${!currentStatus ? 'activated' : 'deactivated'} successfully`, 'success');
     } catch (err) {
-      console.error('Toggle error:', err);
       showNotification(err.response?.data?.detail || 'Failed to toggle rule', 'error');
     }
   };
@@ -132,14 +126,11 @@ const Rules = () => {
 
   const handleViewVersions = async (ruleId) => {
     try {
-      // Get the current rule details first
       const ruleResponse = await rulesAPI.getRule(ruleId);
       const currentRule = ruleResponse.data;
       
-      // Get version history
       const versionsResponse = await rulesAPI.getRuleVersions(ruleId);
       
-      // Store both for the modal
       setSelectedRule(currentRule);
       setRuleVersions(versionsResponse.data);
       setShowVersionsModal(true);
@@ -185,7 +176,6 @@ const Rules = () => {
     switch(severity?.toUpperCase()) {
       case 'FINANCIAL': return 'bg-red-100 text-red-700';
       case 'COMPLIANCE': return 'bg-amber-100 text-amber-700';
-      // Legacy support
       case 'HIGH': return 'bg-red-100 text-red-700';
       case 'MEDIUM': return 'bg-amber-100 text-amber-700';
       case 'LOW': return 'bg-yellow-100 text-yellow-700';
@@ -206,7 +196,6 @@ const Rules = () => {
       'DOCUMENTATION': 'bg-violet-100 text-violet-700',
       'EXTENDED_VALIDATION': 'bg-fuchsia-100 text-fuchsia-700',
       'OTHER': 'bg-gray-100 text-gray-700',
-      // Legacy support
       'pricing': 'bg-blue-100 text-blue-700',
       'quantity': 'bg-green-100 text-green-700',
       'frequency': 'bg-purple-100 text-purple-700',
@@ -230,11 +219,9 @@ const Rules = () => {
   };
 
   const filteredRules = rules.filter(rule => {
-    // Text search filter
     const matchesSearch = rule.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       rule.description?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    // Status filter
     const matchesStatus = statusFilter === 'all' || 
       (statusFilter === 'active' && rule.is_active) ||
       (statusFilter === 'inactive' && !rule.is_active);
@@ -242,12 +229,10 @@ const Rules = () => {
     return matchesSearch && matchesStatus;
   });
 
-  // Reset to first page when search or filter changes
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, statusFilter]);
 
-  // Pagination calculations
   const totalPages = Math.ceil(filteredRules.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
@@ -313,14 +298,12 @@ const Rules = () => {
                   }));
                   exportToCsv(exportData, columns, `rules_${getDateString()}.csv`);
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                className="px-4 py-2 text-sm text-primary hover:bg-primary/10 rounded-lg transition-colors"
               >
-                <Download className="w-4 h-4" />
                 Export
               </button>
             )}
-            <label className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors cursor-pointer">
-              <Upload className="w-4 h-4" />
+            <label className="px-4 py-2 text-sm bg-white text-purple-600 border border-purple-600 rounded-lg hover:bg-purple-50 transition-colors cursor-pointer">
               Bulk Upload
               <input
                 type="file"
@@ -341,10 +324,8 @@ const Rules = () => {
       </div>
 
       <div className="p-8">
-        {/* Search and Filters */}
         <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
           <div className="flex flex-col md:flex-row gap-4">
-            {/* Search Input */}
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
@@ -356,7 +337,6 @@ const Rules = () => {
               />
             </div>
             
-            {/* Status Filter */}
             <div className="flex items-center gap-2">
               <label className="text-sm font-medium text-gray-700">Status:</label>
               <select
@@ -372,7 +352,6 @@ const Rules = () => {
           </div>
         </div>
 
-        {/* Rules Table */}
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -418,23 +397,24 @@ const Rules = () => {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getCategoryColor(rule.category)}`}>
-                          {formatCategoryName(rule.category)}
-                        </span>
+                      <td className="px-6 py-4 text-center">
+                          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getCategoryColor(rule.category)}`}>
+                            {formatCategoryName(rule.category)}
+                          </span>
+                        
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 text-center">
                         <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getSeverityColor(rule.severity)}`}>
                           {formatSeverityName(rule.severity)}
                         </span>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 text-center">
                         <div className="text-sm text-gray-900">v{rule.version}</div>
                         <div className="text-xs text-gray-500">
                           {new Date(rule.updated_at).toLocaleDateString()}
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 text-center">
                         <button
                           onClick={() => handleToggleRule(rule.id, rule.is_active)}
                           className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -486,7 +466,6 @@ const Rules = () => {
             </table>
           </div>
 
-          {/* Pagination */}
           {filteredRules.length > 0 && (
             <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -680,7 +659,6 @@ const Rules = () => {
               ) : (
                 <div className="space-y-4">
                   {ruleVersions.map((version, index) => {
-                    // Current version (index 0) should show the rule's current active status
                     const isCurrentVersion = index === 0;
                     const displayStatus = isCurrentVersion ? selectedRule.is_active : false;
                     
@@ -811,4 +789,3 @@ const Rules = () => {
 };
 
 export default Rules;
-

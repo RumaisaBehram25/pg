@@ -67,23 +67,11 @@ async def upload_csv(
         file_hash=file_hash
     )
     
-    # Try to use Celery, fall back to sync processing if unavailable
-    celery_available = False
-    try:
-        task = process_csv_task.delay(
-            str(job.id),
-            str(file_path),
-            str(current_user.tenant_id)
-        )
-        celery_available = True
-    except Exception as e:
-        logger.warning(f"Celery not available, processing synchronously: {e}")
-        # Process synchronously as fallback
-        try:
-            from app.workers.celery_tasks import process_csv_sync
-            process_csv_sync(str(job.id), str(file_path), str(current_user.tenant_id))
-        except Exception as sync_error:
-            logger.error(f"Sync processing failed: {sync_error}")
+    task = process_csv_task.delay(
+        str(job.id),
+        str(file_path),
+        str(current_user.tenant_id)
+    )
     
     # Log CSV upload
     try:
@@ -99,11 +87,10 @@ async def upload_csv(
     except Exception:
         pass
     
-    processing_msg = "Processing started via Celery." if celery_available else "Processing synchronously."
     return {
         "job_id": str(job.id),
         "status": job.status,
-        "message": f"File '{file.filename}' uploaded successfully. {processing_msg}"
+        "message": f"File '{file.filename}' uploaded successfully. Processing will begin shortly."
     }
 
 

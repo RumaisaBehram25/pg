@@ -85,7 +85,9 @@ async def get_dashboard_stats(
         week_ago = now - timedelta(days=7)
         two_weeks_ago = now - timedelta(days=14)
         
-        # Total Claims
+        # ========================================
+        # TOTAL CLAIMS (unchanged)
+        # ========================================
         total_claims = db.query(func.count(Claim.id)).filter(
             Claim.tenant_id == tenant_id
         ).scalar() or 0
@@ -107,46 +109,66 @@ async def get_dashboard_stats(
         else:
             claims_change = 100 if total_claims_last_week > 0 else 0
         
-        # Pending Jobs
+        # ========================================
+        # PENDING JOBS (unchanged)
+        # ========================================
         pending_jobs = db.query(func.count(IngestionJob.id)).filter(
             IngestionJob.tenant_id == tenant_id,
             IngestionJob.status.in_(['pending', 'processing'])
         ).scalar() or 0
         
-        # Flagged Claims (unreviewed)
-        flagged_claims = db.query(func.count(func.distinct(FlaggedClaim.claim_id))).filter(
+        # ========================================
+        # TOTAL FLAGS (CHANGED - Count ALL flags, not unique claims)
+        # ========================================
+        
+        # Total flags (all)
+        total_flags = db.query(func.count(FlaggedClaim.id)).filter(
+            FlaggedClaim.tenant_id == tenant_id
+        ).scalar() or 0
+        
+        # Unreviewed flags
+        unreviewed_flags = db.query(func.count(FlaggedClaim.id)).filter(
             FlaggedClaim.tenant_id == tenant_id,
             FlaggedClaim.reviewed == False
         ).scalar() or 0
         
-        flagged_last_week = db.query(func.count(func.distinct(FlaggedClaim.claim_id))).filter(
+        # Reviewed flags
+        reviewed_flags = db.query(func.count(FlaggedClaim.id)).filter(
             FlaggedClaim.tenant_id == tenant_id,
-            FlaggedClaim.reviewed == False,
+            FlaggedClaim.reviewed == True
+        ).scalar() or 0
+        
+        # Flags last week (for percentage calculation)
+        flags_last_week = db.query(func.count(FlaggedClaim.id)).filter(
+            FlaggedClaim.tenant_id == tenant_id,
             FlaggedClaim.flagged_at >= week_ago
         ).scalar() or 0
         
-        flagged_prev_week = db.query(func.count(func.distinct(FlaggedClaim.claim_id))).filter(
+        flags_prev_week = db.query(func.count(FlaggedClaim.id)).filter(
             FlaggedClaim.tenant_id == tenant_id,
-            FlaggedClaim.reviewed == False,
             FlaggedClaim.flagged_at >= two_weeks_ago,
             FlaggedClaim.flagged_at < week_ago
         ).scalar() or 0
         
-        if flagged_prev_week > 0:
-            flagged_change = ((flagged_last_week - flagged_prev_week) / flagged_prev_week) * 100
-        elif flagged_last_week > 0:
-            flagged_change = 100  # New flags this week with no previous week data
+        if flags_prev_week > 0:
+            flags_change = ((flags_last_week - flags_prev_week) / flags_prev_week) * 100
+        elif flags_last_week > 0:
+            flags_change = 100  # New flags this week with no previous week data
         else:
-            flagged_change = 0  # No flags at all
+            flags_change = 0  # No flags at all
         
-        # Completed Today
+        # ========================================
+        # COMPLETED TODAY (unchanged)
+        # ========================================
         completed_today = db.query(func.count(IngestionJob.id)).filter(
             IngestionJob.tenant_id == tenant_id,
             IngestionJob.status == 'completed',
             IngestionJob.completed_at >= today_start
         ).scalar() or 0
         
-        # Metrics
+        # ========================================
+        # METRICS (Updated to show Total Flags)
+        # ========================================
         metrics = [
             MetricData(
                 title="Total Claims",
@@ -161,10 +183,10 @@ async def get_dashboard_stats(
                 trend="up"
             ),
             MetricData(
-                title="Flagged Claims",
-                value=flagged_claims,
-                change=f"{abs(flagged_change):.1f}% last week",
-                trend="down" if flagged_change <= 0 else "up"
+                title="Total Flags",  # Changed from "Flagged Claims"
+                value=total_flags,    # Now shows total flags (2855)
+                change=f"{abs(flags_change):.1f}% last week",
+                trend="down" if flags_change <= 0 else "up"
             ),
             MetricData(
                 title="Completed Today",
@@ -174,7 +196,9 @@ async def get_dashboard_stats(
             )
         ]
         
-        # Processing Status - Jobs within the selected period
+        # ========================================
+        # PROCESSING STATUS (unchanged)
+        # ========================================
         recent_jobs = db.query(IngestionJob).filter(
             IngestionJob.tenant_id == tenant_id,
             IngestionJob.status.in_(['completed', 'processing']),
@@ -194,7 +218,9 @@ async def get_dashboard_stats(
                 value=round(completion_pct, 1)
             ))
         
-        # Recent Activity
+        # ========================================
+        # RECENT ACTIVITY (unchanged)
+        # ========================================
         recent_activity = []
         
         # Recent completed jobs
@@ -242,17 +268,19 @@ async def get_dashboard_stats(
             ))
         
         # Also show total unreviewed flags if significant
-        if flagged_claims > 0 and len(recent_flag_jobs) > 0:
+        if unreviewed_flags > 0 and len(recent_flag_jobs) > 0:
             # Don't duplicate if it's the same count
-            if recent_flag_jobs and recent_flag_jobs[0].flag_count != flagged_claims:
+            if recent_flag_jobs and recent_flag_jobs[0].flag_count != unreviewed_flags:
                 recent_activity.append(ActivityItem(
                     type="warning",
-                    title=f"{flagged_claims} Total Unreviewed",
-                    description="Claims pending review across all jobs",
+                    title=f"{unreviewed_flags} Total Unreviewed",
+                    description="Flags pending review across all jobs",
                     time="Current"
                 ))
         
-        # Recent Orders (Claims)
+        # ========================================
+        # RECENT ORDERS (unchanged)
+        # ========================================
         recent_claims = db.query(Claim).filter(
             Claim.tenant_id == tenant_id
         ).order_by(desc(Claim.created_at)).limit(10).all()
@@ -305,6 +333,3 @@ async def get_dashboard_stats(
             status_code=500,
             detail=f"Failed to fetch dashboard stats: {str(e)}"
         )
-
-
-

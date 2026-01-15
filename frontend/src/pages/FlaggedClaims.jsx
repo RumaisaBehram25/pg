@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AlertTriangle, Eye, CheckCircle, Search, ChevronLeft, ChevronRight, FileText, ArrowLeft, Flag, RefreshCw, Download, Play } from 'lucide-react';
-import { fraudAPI, claimsAPI, runsAPI } from '../utils/api';
+import { fraudAPI, claimsAPI } from '../utils/api';
 import { exportToCsv, getDateString } from '../utils/exportCsv';
 
 const FlaggedClaims = () => {
@@ -53,7 +53,7 @@ const FlaggedClaims = () => {
     try {
       const response = await fraudAPI.getStats();
       setStats({
-        total: response.data.total_flagged_claims || 0,
+        total: response.data.total_flags || 0,
         reviewed: response.data.total_reviewed || 0,
         unreviewed: response.data.total_unreviewed || 0
       });
@@ -253,11 +253,11 @@ const FlaggedClaims = () => {
               <p className="text-sm text-gray-600 mt-1">
                 {viewMode === 'jobs' 
                   ? 'Select a job to review its flagged claims' 
-                  : `${flaggedClaims.length} flagged claims in this job`}
+                  : `${flaggedClaims.length} fraud flags in this job`}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
             {viewMode === 'claims' && flaggedClaims.length > 0 && (
               <button
                 onClick={() => {
@@ -287,9 +287,8 @@ const FlaggedClaims = () => {
                   }));
                   exportToCsv(exportData, columns, `flagged_claims_${selectedJob?.file_name || 'export'}_${getDateString()}.csv`);
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+                className="px-4 py-2 text-sm text-primary hover:bg-primary/10 rounded-lg transition-colors"
               >
-                <Download className="w-4 h-4" />
                 Export CSV
               </button>
             )}
@@ -298,9 +297,8 @@ const FlaggedClaims = () => {
                 fetchJobs();
                 fetchOverallStats();
               }}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              className="px-4 py-2 text-sm text-primary hover:bg-primary/10 rounded-lg transition-colors"
             >
-              <RefreshCw className="w-4 h-4" />
               Refresh
             </button>
           </div>
@@ -308,31 +306,36 @@ const FlaggedClaims = () => {
       </div>
 
       <div className="p-8">
-        {/* Stats Cards - Show job-specific stats when viewing a job, overall stats otherwise */}
+        {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
           <div className="bg-white rounded-xl shadow-sm p-6">
             <p className="text-sm text-gray-600 mb-1">
-              {viewMode === 'claims' ? 'Job Flagged' : 'Total Flagged'}
+              {viewMode === 'claims' ? 'Job Total Flags' : 'Total Flags'}
             </p>
             <p className="text-3xl font-bold text-gray-900">
               {viewMode === 'claims' ? flaggedClaims.length : stats.total}
             </p>
+            <p className="text-xs text-gray-500 mt-1">
+              {viewMode === 'claims' ? 'Flags in this job' : 'All fraud flags'}
+            </p>
           </div>
           <div className="bg-white rounded-xl shadow-sm p-6">
-            <p className="text-sm text-gray-600 mb-1">Unreviewed</p>
+            <p className="text-sm text-gray-600 mb-1">Unreviewed Flags</p>
             <p className="text-3xl font-bold text-amber-600">
               {viewMode === 'claims' 
                 ? flaggedClaims.filter(c => !c.reviewed).length 
                 : stats.unreviewed}
             </p>
+            <p className="text-xs text-gray-500 mt-1">Pending review</p>
           </div>
           <div className="bg-white rounded-xl shadow-sm p-6">
-            <p className="text-sm text-gray-600 mb-1">Reviewed</p>
+            <p className="text-sm text-gray-600 mb-1">Reviewed Flags</p>
             <p className="text-3xl font-bold text-green-600">
               {viewMode === 'claims' 
                 ? flaggedClaims.filter(c => c.reviewed).length 
                 : stats.reviewed}
             </p>
+            <p className="text-xs text-gray-500 mt-1">Completed</p>
           </div>
         </div>
 

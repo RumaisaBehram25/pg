@@ -212,7 +212,7 @@ const AuditReports = () => {
                             #{run.id.substring(0, 8)}
                           </span>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 text-center">
                           <div className="flex items-center gap-2">
                             <FileText className="w-4 h-4 text-gray-400" />
                             <span className="text-sm text-gray-900">
@@ -226,7 +226,7 @@ const AuditReports = () => {
                             {formatDate(run.run_date)}
                           </div>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 text-center">
                           {getStatusBadge(run.status)}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-900 font-medium">
@@ -235,19 +235,20 @@ const AuditReports = () => {
                         <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                           {run.rules_executed}
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 text-center">
                           <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-50 text-red-700 rounded text-sm font-medium">
                             <Flag className="w-3.5 h-3.5" />
                             {run.flags_generated}
                           </span>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 text-center">
                           <button
                             onClick={() => handleViewRun(run)}
-                            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors text-sm"
+                            className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors" 
+                            title="View Report"
                           >
-                            <Eye className="w-4 h-4" />
-                            View Report
+                            <Eye className="w-5 h-5" />
+                            
                           </button>
                         </td>
                       </tr>
@@ -320,9 +321,9 @@ const AuditReports = () => {
           <button
             onClick={exportRunReport}
             disabled={!runDetails}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-sm text-primary hover:bg-primary/10 rounded-lg transition-colors disabled:opacity-50"
           >
-            <Download className="w-4 h-4" />
+            
             Export Report (CSV)
           </button>
         </div>

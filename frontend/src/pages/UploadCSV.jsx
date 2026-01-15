@@ -197,9 +197,8 @@ const UploadCSV = () => {
           </div>
           <button
             onClick={fetchJobs}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+            className="px-4 py-2 text-sm text-primary hover:bg-primary/10 rounded-lg transition-colors"
           >
-            <RefreshCw className="w-4 h-4" />
             Refresh
           </button>
         </div>

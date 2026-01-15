@@ -45,9 +45,9 @@ const Dashboard = () => {
   // Fallback mock data if API fails
   const getMockData = () => ({
     metrics: [
-      { title: 'Total Claims', value: 331, change: '28% last week', trend: 'up' },
+      { title: 'Total Jobs', value: 331, change: '28% last week', trend: 'up' },
       { title: 'Pending Jobs', value: 2000, change: '20.3% last week', trend: 'up' },
-      { title: 'Flagged Claims', value: 0, change: '-1.8% last week', trend: 'down' },
+      { title: 'Total Flags', value: 2855, change: '15.2% last week', trend: 'up' },
       { title: 'Completed Today', value: 189, change: '22% last week', trend: 'up' },
     ],
     processing_status: [
@@ -73,7 +73,7 @@ const Dashboard = () => {
       {
         type: 'flagged',
         title: '45 Claims Flagged',
-        description: 'Automatic review flagged for suspicious patterns',
+        description: 'Fraud detection run completed with 45 flags',
         time: '6 hours ago',
       },
     ],
