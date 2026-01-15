@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
@@ -15,37 +16,23 @@ app = FastAPI(
 # CORS Configuration
 allowed_origins = settings.ALLOWED_ORIGINS.split(",") if settings.ALLOWED_ORIGINS else []
 allowed_origins = [origin.strip() for origin in allowed_origins if origin.strip()]
-
-# Add localhost for development
 if "http://localhost:8000" not in allowed_origins:
     allowed_origins.append("http://localhost:8000")
-
 # Add frontend origins for local development
 for port in [5173, 5174, 5175, 5176]:
     origin = f"http://localhost:{port}"
     if origin not in allowed_origins:
         allowed_origins.append(origin)
 
-# ✅ ADD YOUR VERCEL FRONTEND URL (exact URL, no wildcards)
-vercel_url = "https://pg-6nyp4mo15-rumaisabehram25s-projects.vercel.app"
-if vercel_url not in allowed_origins:
-    allowed_origins.append(vercel_url)
-
 print(f"CORS allowed origins: {allowed_origins}")
-
-# ✅ ALLOW ALL ORIGINS IF NO SPECIFIC ORIGINS SET (for development)
-# Remove this in production and use specific origins only
-if not allowed_origins or len(allowed_origins) == 0:
-    allowed_origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,  # Removed the conditional
+    allow_origins=allowed_origins if allowed_origins else ["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Simplified
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["*"],
-    max_age=3600,  # Cache preflight for 1 hour
 )
 app.add_middleware(TenantContextMiddleware)
 
