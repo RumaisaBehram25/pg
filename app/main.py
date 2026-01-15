@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
@@ -16,13 +15,25 @@ app = FastAPI(
 # CORS Configuration
 allowed_origins = settings.ALLOWED_ORIGINS.split(",") if settings.ALLOWED_ORIGINS else []
 allowed_origins = [origin.strip() for origin in allowed_origins if origin.strip()]
+
+# Add localhost for development
 if "http://localhost:8000" not in allowed_origins:
     allowed_origins.append("http://localhost:8000")
+
 # Add frontend origins for local development
 for port in [5173, 5174, 5175, 5176]:
     origin = f"http://localhost:{port}"
     if origin not in allowed_origins:
         allowed_origins.append(origin)
+
+# ✅ ADD YOUR VERCEL FRONTEND URL
+vercel_url = "https://pg-6nyp4mo15-rumaisabehram25s-projects.vercel.app"
+if vercel_url not in allowed_origins:
+    allowed_origins.append(vercel_url)
+
+# ✅ Also allow all Vercel preview deployments (optional but recommended)
+if "https://*.vercel.app" not in allowed_origins:
+    allowed_origins.append("https://*.vercel.app")
 
 print(f"CORS allowed origins: {allowed_origins}")
 
