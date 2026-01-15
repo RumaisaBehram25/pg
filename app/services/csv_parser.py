@@ -13,7 +13,7 @@ def read_csv_file(file_path=None, csv_content=None):
     """
     
     # NEW: If csv_content is provided, use it directly
-    if csv_content:
+    if csv_content is not None:
         return _parse_csv_content(csv_content)
     
     # OLD: Fallback to file reading (for local development)

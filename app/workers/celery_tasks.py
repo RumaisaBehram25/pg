@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.models.claim import Claim, IngestionJob, IngestionError
 from app.services.csv_validator import CSVValidator, ValidationError
 from app.workers.fraud_detection_task import detect_fraud_for_job
-
+from app.services.csv_parser import read_csv_file  # Import your existing CSV parser
 
 engine = create_engine(
     settings.DATABASE_URL,
@@ -39,7 +39,7 @@ class DatabaseTask(Task):
 
 
 @celery_app.task(base=DatabaseTask, bind=True, name='process_csv_task')
-def process_csv_task(self, job_id: str, tenant_id: str, file_path: str = None):
+def process_csv_task(self, job_id: str, tenant_id: str, csv_content: str = None):
    
     db = self.db
     
@@ -47,7 +47,7 @@ def process_csv_task(self, job_id: str, tenant_id: str, file_path: str = None):
     print(f"STARTING CSV PROCESSING (CLIENT SCHEMA)")
     print(f"Job ID: {job_id}")
     print(f"Tenant ID: {tenant_id}")
-    print(f"File: {file_path}")
+    print(f"CSV Content Provided")
     print(f"{'='*80}\n")
     
     try:
@@ -60,8 +60,10 @@ def process_csv_task(self, job_id: str, tenant_id: str, file_path: str = None):
         
         _update_job_status(db, job, "processing")
         
-       # Read CSV from database instead of file
-        rows = _read_csv_from_db(db, job_id)
+        # Use the CSV content passed from the task
+        if csv_content is None:
+            raise ValueError("No CSV content provided.")
+        rows = read_csv_file(csv_content=csv_content)
         
         _validate_csv_structure(rows)
         
@@ -131,29 +133,6 @@ def _update_job_status(db, job, status: str):
     print(f" Job status: {status}\n")
 
 
-def _read_csv_from_db(db, job_id: str):
-    """Read CSV content from database instead of file"""
-    from app.services.csv_parser import read_csv_file
-    
-    job = db.query(IngestionJob).filter(IngestionJob.id == job_id).first()
-    
-    if not job:
-        raise ValueError(f"Job {job_id} not found")
-    
-    if not job.csv_content:
-        raise ValueError(f"No CSV content found for job {job_id}")
-    
-    print(f" Reading CSV from database: {job.filename}")
-    
-    # Parse CSV content from database
-    rows = read_csv_file(csv_content=job.csv_content)
-    
-    if not rows:
-        raise ValueError("CSV file is empty")
-    
-    print(f" Read {len(rows)} rows\n")
-    
-    return rows
 def _validate_csv_structure(rows):
     required_headers = {'claim_id', 'patient_id', 'ndc', 'fill_date', 'days_supply', 'quantity'}
     headers = set(rows[0].keys()) if rows else set()
@@ -399,5 +378,3 @@ def _mark_job_failed(db, job_id: str, error_message: str = None):
             db.commit()
     except Exception as e:
         print(f"  Failed to update job status: {e}")
-
-
