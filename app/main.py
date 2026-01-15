@@ -26,24 +26,26 @@ for port in [5173, 5174, 5175, 5176]:
     if origin not in allowed_origins:
         allowed_origins.append(origin)
 
-# ✅ ADD YOUR VERCEL FRONTEND URL
+# ✅ ADD YOUR VERCEL FRONTEND URL (exact URL, no wildcards)
 vercel_url = "https://pg-6nyp4mo15-rumaisabehram25s-projects.vercel.app"
 if vercel_url not in allowed_origins:
     allowed_origins.append(vercel_url)
 
-# ✅ Also allow all Vercel preview deployments (optional but recommended)
-if "https://*.vercel.app" not in allowed_origins:
-    allowed_origins.append("https://*.vercel.app")
-
 print(f"CORS allowed origins: {allowed_origins}")
+
+# ✅ ALLOW ALL ORIGINS IF NO SPECIFIC ORIGINS SET (for development)
+# Remove this in production and use specific origins only
+if not allowed_origins or len(allowed_origins) == 0:
+    allowed_origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins if allowed_origins else ["*"],
+    allow_origins=allowed_origins,  # Removed the conditional
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_methods=["*"],  # Simplified
     allow_headers=["*"],
     expose_headers=["*"],
+    max_age=3600,  # Cache preflight for 1 hour
 )
 app.add_middleware(TenantContextMiddleware)
 
