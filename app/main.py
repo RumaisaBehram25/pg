@@ -1,11 +1,8 @@
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1 import auth, users, claims, rules, fraud, dashboard, audit, runs
 from app.middleware.tenant_context import TenantContextMiddleware
-
-
 
 app = FastAPI(
     title="Pharmacy Audit Platform",
@@ -13,29 +10,18 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS Configuration
-allowed_origins = settings.ALLOWED_ORIGINS.split(",") if settings.ALLOWED_ORIGINS else []
-allowed_origins = [origin.strip() for origin in allowed_origins if origin.strip()]
-if "http://localhost:8000" not in allowed_origins:
-    allowed_origins.append("http://localhost:8000")
-# Add frontend origins for local development
-for port in [5173, 5174, 5175, 5176]:
-    origin = f"http://localhost:{port}"
-    if origin not in allowed_origins:
-        allowed_origins.append(origin)
-
-print(f"CORS allowed origins: {allowed_origins}")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins if allowed_origins else ["*"],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-)
+# Add TenantContext middleware FIRST (runs after CORS)
 app.add_middleware(TenantContextMiddleware)
 
+# CORS Configuration - Allow all origins for deployment flexibility
+# Add CORS middleware LAST (runs FIRST - handles preflight)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,  # Must be False when using allow_origins=["*"]
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 async def root():
@@ -69,18 +55,16 @@ app.include_router(dashboard.router, prefix="/api/v1", tags=["Dashboard"])
 
 @app.on_event("startup")
 async def startup_event():
-    print(" Pharmacy Audit Platform API starting...")
-    print(f" Database: {settings.DATABASE_URL.split('@')[1] if '@' in settings.DATABASE_URL else 'configured'}")
-    print(" API ready at http://localhost:8000")
-    print(" Docs available at http://localhost:8000/docs")
-
+    print("🚀 Pharmacy Audit Platform API starting...")
+    print(f"📊 Database: {settings.DATABASE_URL.split('@')[1] if '@' in settings.DATABASE_URL else 'configured'}")
+    print("✅ API ready at http://localhost:8000")
+    print("📚 Docs available at http://localhost:8000/docs")
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    print(" Pharmacy Audit Platform API shutting down...")
+    print("🛑 Pharmacy Audit Platform API shutting down...")
 
 app.include_router(rules.router, prefix="/api/v1")
-
 app.include_router(fraud.router, prefix="/api/v1")
 app.include_router(audit.router, prefix="/api/v1")
 app.include_router(runs.router, prefix="/api/v1")
